@@ -1,3 +1,4 @@
+import {assertFmsProjectionCurrentEntries} from './dev070-fms-projection-current-migration.mjs'
 import { assertDev057UsersMigrationEntries, DEV057_USERS_ENTRY_COUNT } from './dev057-projed-users-migration.mjs'
 import { assertDev057ExternalMigrationEntries, DEV057_EXTERNAL_ENTRY_COUNT } from './dev057-projed-external-migration.mjs'
 import { canonicalize, sha256 } from './dev012-production-migration-runner.mjs'
@@ -47,6 +48,7 @@ function fail(code) { throw Object.assign(new Error(code), { code }) }
 // Released owner operations may consume either reviewed complete generation.
 // This does not admit partial bundles or change either append recipe's bounds.
 export function assertReviewedOrgmasterMigrationEntries(entries) {
+  if (entries?.length === 69) return assertFmsProjectionCurrentEntries(entries)
   if (entries?.length === DEV057_USERS_ENTRY_COUNT) return assertDev057UsersMigrationEntries(entries)
   if ([66,67].includes(entries?.length)) return assertDev057UsersMigrationEntries(entries, true)
   if (entries?.length === DEV057_EXTERNAL_ENTRY_COUNT) return assertDev057ExternalMigrationEntries(entries)

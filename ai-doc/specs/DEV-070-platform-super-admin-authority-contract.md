@@ -26,6 +26,16 @@ FMS 不再向 OrgMaster handoff dynamic catalog，也不需要本人安裝 FMS �
 
 總控權威契約：`C:/VIBE CODING/.worktrees/Jenfu-Platform/dev022-platform-super-admin-20261105/ai-doc/specs/DEV-022-platform-super-admin-cross-project-plan.md`（Platform owner 開發 root；發布使用獨立 clean source checkout）；`C:/VIBE CODING/Jenfu-Platform` 原 root 僅作協調鏡本，不作 release source。相鄰責任沿 DEV-057 Principal／writer fencing 及 DEV-058 集中任用；不重開原驗收或替它們結案。[架構決策](../adr/ADR-007-external-role-catalog-assignment-boundary.md#platform-super-admin-20261105)。
 
+### FMS 行政投影 current-function forward（2026-11-25；Platform DEV-015 candidate）
+
+隔離正常 UI 已發布 FMS app-admin，行政命令與 lifecycle receipt 均 acknowledged，但 Platform 仍拒絕啟動。唯讀快照證明同一 exact Principal／Employee 有 active admission 及 FMS v4 五項 catalog protected grants，卻沒有有效 app-admin／Portal visibility row。050 將原 `administrative_catalog_current_v1` rename 為 legacy 時，044 view 仍依 PostgreSQL 原 function OID 綁定 legacy；同一固定 definition 對 current compatibility 函式為 true、legacy 為 false。這是投影來源綁定缺口，不以新增業務 role、重授或重發布補救。
+
+新增 forward-only `073_dev070_fms_administrative_projection_current.sql`，以 `CREATE OR REPLACE` 保留原 view OID、shape、security barrier、owner 與 ACL，只將 FMS catalog predicate 明確綁定050 current compatibility 函式；非 FMS 保持 legacy 判定。原 active exact-human Principal／Employee、單一 mapping/account type、manual/global、期限、status、catalog binding、root 分支及撤權 fence 全保留。044／050及其 applied bytes／歷史 ledger 不改。
+
+正常 owner current manifest 為69筆；獨立具名 `DEV070_FMS_PROJECTION_CURRENT_APPEND`／`--dev070-fms-projection-current-append` 只接受完整、精確的68→69 prefix，runner 僅接受已知68或69筆且逐筆驗 hash，native receipt 最多新增1筆並驗原跨 database denials。歷史 PROJED_USERS 仍固定68，不接受073或改寫舊收據。CLI／authority／bundler／tool packaging／runner／receipt／local status 使用同一 pinned073 entry，不執行正式 release。隔離copy沿既有 owner native executor、fresh exact data-directory／61315／own-schema guard 只新增073；舊 adapted fixture source-vs-applied framing原收據保持，其限制不冒充clean native baseline資格。
+
+實際 PostgreSQL component 回歸保留044→050舊OID負向，073後不改同一publication即出visibility row；檢查原生 `pg_depend` OID、metadata與ACL等值、legacyFMS、typed human、期限／身份／catalog／manual／scope否決、非FMS與root分支。24項PASS；首輪fixture未包含044 narrow SECURITY DEFINER reader而42501，補實際source composition後通過，沒有放寬產品ACL。正常bundle／CLI／runner／receipt／歷史68及local69 focused71項PASS。requiredCI與跨owner真Google完整陽性另由同PR／Platform DEV015記錄，不以命令ack替代可啟動或正式驗收。
+
 ## 1. 人類決策與範圍
 
 指定 jedchang0308@jenfu.com.tw（張仕杰／JFS0005）在正式及地端取得平台超管。沿用同一 Google personal；最低接受 AAL1，AAL2 亦接受，中文姓名不變，不另建 privileged 帳號。兩環境各自綁定 exact Principal，不複製 local UID／Employee／Principal 到 production。

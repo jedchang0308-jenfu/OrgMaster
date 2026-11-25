@@ -1,4 +1,5 @@
 import { DEV057_USERS_MIGRATIONS } from './lib/dev057-projed-users-migration.mjs'
+import {FMS_PROJECTION_CURRENT} from './lib/dev070-fms-projection-current-migration.mjs'
 import { DEV057_EXTERNAL_MIGRATION } from './lib/dev057-projed-external-migration.mjs'
 import assert from 'node:assert/strict'
 import test from 'node:test'
@@ -49,6 +50,18 @@ test('local CLI only admits bounded plan/status/commit arguments',()=>{
  assert.throws(()=>parseLocalAdministrationOwnerArgs(['commit','--config','own.json','--plan','plan.json','--sql','SELECT 1']))
  assert.throws(()=>parseLocalAdministrationOwnerArgs(['commit','--config','own.json']))
 })
+
+test('current local status recognizes the pinned 073 suffix while historical 68 remains exact',()=>{
+ const historical=entries.slice(0,68),current=entries,ledger=current.map(row)
+ assert.equal(validateLocalLedger(current,ledger,database).count,69)
+ assert.deepEqual(validateLocalLedger(current,ledger,database).pending,[])
+ assert.equal(validateLocalLedger(historical,historical.map(row),database).count,68)
+ assert.throws(()=>validateLocalLedger(historical,ledger,database),/LEDGER_UNKNOWN/)
+ const changed=structuredClone(ledger);changed[68].checksum_sha256='0'.repeat(64)
+ assert.throws(()=>validateLocalLedger(current,changed,database),/LEDGER_UNKNOWN/)
+ const unknown=structuredClone(current);unknown[68].version='unknown'
+ assert.throws(()=>validateLocalLedger(unknown,ledger,database))
+})
 test('known local raw 042 genesis is preserved as its own exact ledger variant',()=>{
  const f=fixture(),result=validateLocalLedger(entries,f.state.ledger,database)
  assert.equal(result.raw042,true);assert.equal(result.count,40)
@@ -57,7 +70,7 @@ test('known local raw 042 genesis is preserved as its own exact ledger variant',
   'dev070-orgmaster-050','dev070-orgmaster-051','dev070-orgmaster-052','dev070-orgmaster-053','dev070-orgmaster-054','dev070-orgmaster-055',
   'dev057-orgmaster-056','dev057-orgmaster-057','dev059-orgmaster-058','dev059-orgmaster-059','dev059-orgmaster-060',
   'dev059-orgmaster-061','dev059-orgmaster-062','dev059-orgmaster-063','dev059-orgmaster-064',
-  ...DEV057_PROJED_MIGRATIONS.map(entry=>entry.version), DEV057_EXTERNAL_MIGRATION.version, ...DEV057_USERS_MIGRATIONS.map(entry=>entry.version),
+  ...DEV057_PROJED_MIGRATIONS.map(entry=>entry.version), DEV057_EXTERNAL_MIGRATION.version, ...DEV057_USERS_MIGRATIONS.map(entry=>entry.version),FMS_PROJECTION_CURRENT.version,
  ])
  for(const change of [rows=>rows[39].checksum_sha256='0'.repeat(64),rows=>rows[39].source_revision='LOCAL_GENESIS:99999999-b7cd-4c7c-947d-c3203e59178c',rows=>rows[0].name='foreign',rows=>rows.push({...rows[0],version:'unknown'})]){const rows=structuredClone(f.state.ledger);change(rows);assert.throws(()=>validateLocalLedger(entries,rows,database),/LEDGER_UNKNOWN/)}
 })
@@ -201,8 +214,8 @@ test('local current ledger accepts exact installed rows and the known forward ap
  const installedThrough058=entries.findIndex(e=>e.version==='dev059-orgmaster-058')+1
  assert.deepEqual(validateLocalLedger(entries,current.slice(0,installedThrough058),database).pending.map(e=>e.version),[
   'dev059-orgmaster-059','dev059-orgmaster-060','dev059-orgmaster-061','dev059-orgmaster-062','dev059-orgmaster-063','dev059-orgmaster-064',
-  ...DEV057_PROJED_MIGRATIONS.map(entry=>entry.version), DEV057_EXTERNAL_MIGRATION.version, ...DEV057_USERS_MIGRATIONS.map(entry=>entry.version),
+  ...DEV057_PROJED_MIGRATIONS.map(entry=>entry.version), DEV057_EXTERNAL_MIGRATION.version, ...DEV057_USERS_MIGRATIONS.map(entry=>entry.version),FMS_PROJECTION_CURRENT.version,
  ])
- assert.deepEqual(validateLocalLedger(entries,current.slice(0,-1),database).pending.map(e=>e.version),[DEV057_USERS_MIGRATIONS.at(-1).version])
+ assert.deepEqual(validateLocalLedger(entries,current.slice(0,-1),database).pending.map(e=>e.version),[FMS_PROJECTION_CURRENT.version])
  assert.throws(()=>validateLocalLedger(entries,[...current,{...current.at(-1),version:'unknown-049'}],database),/LEDGER_UNKNOWN/)
 })

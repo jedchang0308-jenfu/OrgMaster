@@ -54,3 +54,5 @@ db/migrations/054_dev070_fms_authority_publication_status.sql text eol=lf
 db/migrations/055_dev070_fms_session_display_profile.sql text eol=lf
 db/migrations/056_dev057_ai_pdm_session_authority.sql text eol=lf
 db/migrations/057_dev057_pdm_session_publication.sql text eol=lf
+
+db/migrations/073_dev070_fms_administrative_projection_current.sql text eol=lf

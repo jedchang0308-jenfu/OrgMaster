@@ -1,3 +1,4 @@
+import {FMS_PROJECTION_CURRENT_RELEASE_MODE,assertFmsProjectionCurrentAppend,assertFmsProjectionCurrentReleaseAuthority} from './dev070-fms-projection-current-migration.mjs'
 import { DEV057_USERS_RELEASE_MODE, assertDev057UsersAppend, assertDev057UsersReleaseAuthority } from './dev057-projed-users-migration.mjs'
 import { dev057PreCallerRuntimeProfile, isDev057CallerEnvironmentAppend } from './dev057-projed-caller-profile.mjs'
 import { DEV057_EXTERNAL_RELEASE_MODE, assertDev057ExternalAppend, assertDev057ExternalReleaseAuthority, assertDev057SchemaPredecessorRef } from './dev057-projed-external-migration.mjs'
@@ -928,14 +929,14 @@ export function assertToolRotationReleaseCompatibility({ toolRotation, toolRotat
   if (!toolRotation && !toolRotationPredecessor) return
   const controlledSmokeRotation = controlledTransition?.releaseMode === DEV060_RELEASE_MODE && allowControlledSmokeRotation === true
   if (repair || runtimeChanged || (controlledTransition
-    && ((toolRotationPredecessor && !controlledSmokeRotation) || ![DEV058_RELEASE_MODE, DEV059_RELEASE_MODE, DEV060_RELEASE_MODE,DEV070_RELEASE_MODE, DEV057_PROJED_RELEASE_MODE, DEV057_EXTERNAL_RELEASE_MODE, DEV057_USERS_RELEASE_MODE].includes(controlledTransition.releaseMode)))) fail('TOOL_ROTATION_ORDINARY_ONLY')
+    && ((toolRotationPredecessor && !controlledSmokeRotation) || ![DEV058_RELEASE_MODE, DEV059_RELEASE_MODE, DEV060_RELEASE_MODE,DEV070_RELEASE_MODE, DEV057_PROJED_RELEASE_MODE, DEV057_EXTERNAL_RELEASE_MODE, DEV057_USERS_RELEASE_MODE,FMS_PROJECTION_CURRENT_RELEASE_MODE].includes(controlledTransition.releaseMode)))) fail('TOOL_ROTATION_ORDINARY_ONLY')
 }
 
 // DEV-058/059/060/070 may append their exact schema after an already verified tool-image
 // rotation.  The infra receipt remains bound to that rotation source; all
 // other forward transitions stay bound to the current release source.
 export function resolveMigrationInfraReceiptSource({ controlledTransition, toolRotation, toolRotationPredecessor = null, intentSourceRevision }) {
-  if (![DEV058_RELEASE_MODE, DEV059_RELEASE_MODE, DEV060_RELEASE_MODE,DEV070_RELEASE_MODE, DEV057_PROJED_RELEASE_MODE, DEV057_EXTERNAL_RELEASE_MODE, DEV057_USERS_RELEASE_MODE].includes(controlledTransition?.releaseMode)) return intentSourceRevision
+  if (![DEV058_RELEASE_MODE, DEV059_RELEASE_MODE, DEV060_RELEASE_MODE,DEV070_RELEASE_MODE, DEV057_PROJED_RELEASE_MODE, DEV057_EXTERNAL_RELEASE_MODE, DEV057_USERS_RELEASE_MODE,FMS_PROJECTION_CURRENT_RELEASE_MODE].includes(controlledTransition?.releaseMode)) return intentSourceRevision
   const rotation = toolRotation ?? toolRotationPredecessor?.continuationEvidence ?? null
   if (rotation == null) return intentSourceRevision
   if (rotation.evidenceScope !== 'OWNER_SEALED_TOOL_IMAGE_ROTATION' || rotation.ddlExecuted !== 0
@@ -963,6 +964,7 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   if (appArtifactReuse?.appliedSchema && !recoveredCallerAppend) fail('APP_ARTIFACT_REUSE_SCHEMA_MODE_INVALID')
   const rolePolicyAppend = values.readiness?.devId === 'DEV-058'
   const fmsAuthorityAppend = values.readiness?.devId === 'DEV-059'
+  const fmsProjectionAppend=values.readiness?.devId==='DEV-070'&&values.readiness?.slice==='070-FMS-PROJECTION-CURRENT'
   const projedUsersAppend = values.readiness?.devId === 'DEV-057' && values.readiness?.slice === '057-PROJED-USERS'
   const projedExternalAppend = values.readiness?.devId === 'DEV-057' && values.readiness?.slice === '057-PROJED-EXTERNAL'
   const plannedCallerAppend = projedExternalAppend && executionMode === 'migration_only' && values.readiness?.schemaPredecessorRef
@@ -976,15 +978,15 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     && (!projedExternalAppend || executionMode !== 'migration_only')) fail('DEV057_SCHEMA_PREDECESSOR_MODE_INVALID')
   const projedPrincipalAppend = values.readiness?.devId === 'DEV-057' && values.readiness?.slice === '057-PROJED-PRINCIPAL'
   const fmsCatalogActivationAppend = values.readiness?.devId === 'DEV-060'
-  const administrationAppend=values.readiness?.devId==='DEV-070'
+  const administrationAppend=values.readiness?.devId==='DEV-070'&&!fmsProjectionAppend
   const fmsDeliveryRuntimeAppend = administrationAppend && isFmsDeliveryAppend(baseline.bundle.value.entries, profile)
     && matchesFmsDeliveryRuntimeAppend(profile, baselineRuntime, runtimeConfig)
   const runtimeChanged = !same(runtimeConfig, baselineRuntime) && !fmsDeliveryRuntimeAppend && !plannedCallerAppend && !recoveredCallerAppend
-  if ((rolePolicyAppend || fmsAuthorityAppend || fmsCatalogActivationAppend || administrationAppend || projedPrincipalAppend || projedExternalAppend || projedUsersAppend) && runtimeChanged) fail(projedPrincipalAppend ? 'DEV057_PROJED_RUNTIME_CHANGED' : administrationAppend?'DEV070_RUNTIME_CHANGED':fmsCatalogActivationAppend ? 'DEV060_RUNTIME_CHANGED' : fmsAuthorityAppend ? 'DEV059_RUNTIME_CHANGED' : 'DEV058_RUNTIME_CHANGED')
+  if ((fmsProjectionAppend || rolePolicyAppend || fmsAuthorityAppend || fmsCatalogActivationAppend || administrationAppend || projedPrincipalAppend || projedExternalAppend || projedUsersAppend) && runtimeChanged) fail(projedPrincipalAppend ? 'DEV057_PROJED_RUNTIME_CHANGED' : administrationAppend?'DEV070_RUNTIME_CHANGED':fmsCatalogActivationAppend ? 'DEV060_RUNTIME_CHANGED' : fmsAuthorityAppend ? 'DEV059_RUNTIME_CHANGED' : 'DEV058_RUNTIME_CHANGED')
   const lifecycleGuard = values.readiness?.devId === 'DEV-014' && values.readiness?.slice === '014-PRINCIPAL-LIFECYCLE-V2'
   const lifecycleEnable = values.readiness?.devId === 'DEV-014' && values.readiness?.slice === '014-PRINCIPAL-LIFECYCLE-ENABLE'
   if (lifecycleGuard) assertDev014PrincipalLifecycleRuntimeGuard(profile, baselineRuntime, runtimeConfig)
-  const controlledTransition = projedUsersAppend ? assertDev057UsersReleaseAuthority(values.readiness,values.authorization,intent) : projedExternalAppend
+  const controlledTransition = fmsProjectionAppend ? assertFmsProjectionCurrentReleaseAuthority(values.readiness,values.authorization,intent) : projedUsersAppend ? assertDev057UsersReleaseAuthority(values.readiness,values.authorization,intent) : projedExternalAppend
     ? assertDev057ExternalReleaseAuthority(values.readiness, values.authorization, intent)
     : projedPrincipalAppend
     ? assertDev057ProjedReleaseAuthority(values.readiness, values.authorization, intent)
@@ -1059,7 +1061,7 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     repair: Boolean(baseline.repair), runtimeChanged, allowControlledSmokeRotation: controlledSmokeRotation })
   const infrastructureHash = lifecycleGuard
     ? (root, revision) => transitionFingerprint(root, revision, [], dev014PrincipalLifecycleInfrastructureInputs)
-    : [DEV057_USERS_RELEASE_MODE, DEV057_EXTERNAL_RELEASE_MODE, DEV057_PROJED_RELEASE_MODE, DEV070_RELEASE_MODE, DEV058_RELEASE_MODE, DEV059_RELEASE_MODE, DEV060_RELEASE_MODE, 'DEV013_CONTROLLED_ENVIRONMENT', 'DEV014_PRODUCER_CONTRACT_REMEDIATION', 'DEV014_APPLICATION_REGISTRATION_REMEDIATION', 'DEV014_ACTIVATION_CONTRACT_REMEDIATION', 'DEV014_PROJECTION_CONTRACT_REMEDIATION', 'DEV014_MANAGED_PRINCIPAL_PROJECTION_REMEDIATION', 'DEV057_WRITER_FENCE_REMEDIATION', 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION', 'DEV057_CUTOVER_SOURCE_REMEDIATION', 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION', 'DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION', 'DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION'].includes(controlledTransition?.releaseMode) ? transitionFingerprint : fingerprint
+    : [FMS_PROJECTION_CURRENT_RELEASE_MODE,DEV057_USERS_RELEASE_MODE, DEV057_EXTERNAL_RELEASE_MODE, DEV057_PROJED_RELEASE_MODE, DEV070_RELEASE_MODE, DEV058_RELEASE_MODE, DEV059_RELEASE_MODE, DEV060_RELEASE_MODE, 'DEV013_CONTROLLED_ENVIRONMENT', 'DEV014_PRODUCER_CONTRACT_REMEDIATION', 'DEV014_APPLICATION_REGISTRATION_REMEDIATION', 'DEV014_ACTIVATION_CONTRACT_REMEDIATION', 'DEV014_PROJECTION_CONTRACT_REMEDIATION', 'DEV014_MANAGED_PRINCIPAL_PROJECTION_REMEDIATION', 'DEV057_WRITER_FENCE_REMEDIATION', 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION', 'DEV057_CUTOVER_SOURCE_REMEDIATION', 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION', 'DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION', 'DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION'].includes(controlledTransition?.releaseMode) ? transitionFingerprint : fingerprint
   const infrastructureSha256 = infrastructureHash(root, intent.sourceRevision)
   const infrastructureBaselineRevision = controlledTransition?.releaseMode === 'DEV014_LOGIN_FIXTURE_CORRECTION'
     ? values.infra?.sourceRevision
@@ -1098,6 +1100,7 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     migration = { migrationDisposition: 'UNCHANGED_VERIFIED', pendingMigrationCount: 0, migrationInputsSha256: assertRoutineMigrationUnchanged(migrationBaseline, current.bundle) }
     if (rolePolicyAppend) fail('DEV058_MIGRATION_APPEND_INVALID')
     if (fmsAuthorityAppend) fail('DEV059_MIGRATION_APPEND_INVALID')
+    if (fmsProjectionAppend) fail('FMS_PROJECTION_FORWARD_APPEND_INVALID')
     if (projedUsersAppend) fail('DEV057_USERS_MIGRATION_APPEND_INVALID')
     if (projedExternalAppend) fail('DEV057_EXTERNAL_MIGRATION_APPEND_INVALID')
     if (projedPrincipalAppend) fail('DEV057_PROJED_MIGRATION_APPEND_INVALID')
@@ -1113,7 +1116,9 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   } catch (error) {
     if (lifecycleEnable) throw error // enablement executes zero DDL, without append fallback
     if (!controlledTransition || error?.code !== 'ROUTINE_MIGRATION_CHANGED') throw error
-    migration = controlledTransition.releaseMode === DEV057_USERS_RELEASE_MODE
+    migration = controlledTransition.releaseMode === FMS_PROJECTION_CURRENT_RELEASE_MODE
+      ? assertFmsProjectionCurrentAppend(migrationBaseline,current.bundle)
+      : controlledTransition.releaseMode === DEV057_USERS_RELEASE_MODE
       ? assertDev057UsersAppend(migrationBaseline,current.bundle)
       : controlledTransition.releaseMode === DEV057_EXTERNAL_RELEASE_MODE
       ? assertDev057ExternalAppend(migrationBaseline, current.bundle)

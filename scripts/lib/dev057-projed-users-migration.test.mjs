@@ -1,4 +1,4 @@
-import {canonicalize,sha256} from './dev012-production-migration-runner.mjs'
+import {canonicalize,sha256,createMigrationBundle} from './dev012-production-migration-runner.mjs'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 import test from 'node:test'
@@ -11,8 +11,11 @@ import {assertMigrationReceipt} from './dev012-owner-stage-executor.mjs'
 const profile=JSON.parse(readFileSync('config/release/dev040-orgmaster-independent-production-v3.json','utf8'))
 const n1c=JSON.parse(readFileSync('config/dev-010/n1c-orgmaster.json','utf8'))
 const files=new Map(profile.migrations.entries.map(row=>[row.path,readFileSync(row.path)]))
-const after=buildDev040MigrationBundle(profile,buildOrgmasterPackage(n1c),files,'a'.repeat(40)).bundle
-const before={...after,entries:after.entries.slice(0,65)}
+const current=buildDev040MigrationBundle(profile,buildOrgmasterPackage(n1c),files,'a'.repeat(40)).bundle
+// This suite tests the immutable historical USERS recipe, not current 073.
+const target={ownerApplicationId:'orgmaster',ledger:profile.migrations.ledger,baselineCount:10}
+const after=createMigrationBundle({target,sourceRevision:current.sourceRevision,entries:current.entries.slice(0,68)}).bundle
+const before=createMigrationBundle({target,sourceRevision:current.sourceRevision,entries:current.entries.slice(0,65)}).bundle
 test('user directory pins its real SQL and appends only after exact released 65 entries',()=>{
  for(const migration of DEV057_USERS_MIGRATIONS){const bytes=files.get(migration.path)
  assert.equal(sourceSha256(bytes),migration.sourceSha256)

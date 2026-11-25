@@ -1,4 +1,5 @@
-import { DEV057_USERS_MIGRATIONS, assertDev057UsersMigrationEntries } from './dev057-projed-users-migration.mjs'
+import {FMS_PROJECTION_CURRENT,FMS_PROJECTION_CURRENT_RELEASE_MODE,assertFmsProjectionCurrentEntries} from './dev070-fms-projection-current-migration.mjs'
+import { DEV057_USERS_MIGRATIONS } from './dev057-projed-users-migration.mjs'
 import { DEV057_EXTERNAL_MIGRATION, DEV057_EXTERNAL_RELEASE_MODE, assertDev057ExternalMigrationEntries } from './dev057-projed-external-migration.mjs'
 import { DEV014_LIFECYCLE_RUNTIME_TARGET } from './dev014-principal-lifecycle-release.mjs'
 import { assertPrincipalOnlyRecoveryBinding } from './dev057-principal-only-release.mjs'
@@ -69,6 +70,7 @@ const PRODUCTION_MIGRATION_PATHS = [
   ...DEV057_PROJED_MIGRATIONS.map(entry => entry.path),
   DEV057_EXTERNAL_MIGRATION.path,
   ...DEV057_USERS_MIGRATIONS.map(entry => entry.path),
+  FMS_PROJECTION_CURRENT.path,
 ]
 
 function fail(code, detail = '') {
@@ -145,7 +147,7 @@ export function assertDev040V3Profile(profile, n1c) {
   if (immutablePrefixSha256 !== DEV057_MIGRATION_PREFIX_001_029_SHA256) fail('MIGRATION_PREFIX_001_029_DRIFT')
   const prefix30Sha256 = createHash('sha256').update(JSON.stringify(profile.migrations.entries.slice(0, 30).map(({ order: entryOrder, version, path, sourceSha256, appliedSha256 }) => [entryOrder, version, path, sourceSha256, appliedSha256]))).digest('hex')
   if (prefix30Sha256 !== 'd02cb50e2d77a7c1b3e72a8e82e44677af17beae4eb7e0e81fc1816ed8e8e062') fail('MIGRATION_PREFIX_001_030_DRIFT')
-  assertDev057UsersMigrationEntries(profile.migrations.entries)
+  assertFmsProjectionCurrentEntries(profile.migrations.entries)
   if (Object.values(profile.sideEffects || {}).some((value) => value !== 'DISABLED')) fail('SIDE_EFFECT_ENABLED')
   if (profile.operations?.CONFIGURE_ENTRYPOINT !== 'run.projects.locations.services.patch?updateMask=ingress,defaultUriDisabled,invokerIamDisabled') fail('ENTRYPOINT_OPERATION_MISSING')
   if (JSON.stringify(profile.edge) !== JSON.stringify({ servingDependency: false, rollbackDependency: false, ordinaryReleaseMutations: 0, disposition: 'RETAINED_UNUSED_EDGE' })) fail('EDGE_BOUNDARY_DRIFT')
@@ -237,13 +239,13 @@ export function unwrapMigrationTransaction(bytes) {
 export function buildDev040MigrationBundle(profile, n1cPackage, files, sourceRevision, selection = {}) {
   if (!selection || typeof selection !== 'object' || Array.isArray(selection)
     || Object.keys(selection).some(key => !['releaseMode', 'expectedManifestSha256', 'executionMode'].includes(key))
-    || ![undefined, null, DEV057_PROJED_RELEASE_MODE, DEV057_EXTERNAL_RELEASE_MODE].includes(selection.releaseMode)
+    || ![undefined, null, DEV057_PROJED_RELEASE_MODE, DEV057_EXTERNAL_RELEASE_MODE,FMS_PROJECTION_CURRENT_RELEASE_MODE].includes(selection.releaseMode)
     || ![undefined, 'full_release', 'migration_only'].includes(selection.executionMode)
     || (selection.expectedManifestSha256 != null && !H64.test(selection.expectedManifestSha256))) fail('MIGRATION_SELECTION_INVALID')
   if ([DEV057_PROJED_RELEASE_MODE, DEV057_EXTERNAL_RELEASE_MODE].includes(selection.releaseMode) && selection.executionMode !== 'migration_only') fail('DEV057_PROJED_PRINCIPAL_MIGRATION_ONLY_REQUIRED')
   // Validate the entire current generation, including the deferred 069 SQL.
   // A selected release must never hide an unreviewed or corrupted suffix.
-  assertDev057UsersMigrationEntries(profile.migrations.entries)
+  assertFmsProjectionCurrentEntries(profile.migrations.entries)
   verifyDev040MigrationBytes(profile, files)
   if (!Array.isArray(n1cPackage?.entries) || n1cPackage.entries.length !== profile.migrations.baselineCount) fail('MIGRATION_PACKAGE_INVALID')
   const entries = profile.migrations.entries.map((authority, index) => {
@@ -256,7 +258,7 @@ export function buildDev040MigrationBundle(profile, n1cPackage, files, sourceRev
     if (sourceSha256(sql) !== authority.appliedSha256) fail('MIGRATION_PACKAGE_INVALID', authority.path)
     return { order: authority.order, version: authority.version, name: authority.path.split('/').at(-1).replace(/^\d{3}_/u, '').replace(/\.sql$/u, ''), path: authority.path, sourceSha256: authority.sourceSha256, appliedSha256: authority.appliedSha256, sqlBase64: Buffer.from(sql, 'utf8').toString('base64') }
   })
-  assertDev057UsersMigrationEntries(entries)
+  assertFmsProjectionCurrentEntries(entries)
   const selected = selection.releaseMode === DEV057_PROJED_RELEASE_MODE
     ? assertDev057ProjedMigrationEntries(entries.slice(0, DEV057_PROJED_MIGRATION_ENTRY_COUNT))
     : selection.releaseMode === DEV057_EXTERNAL_RELEASE_MODE ? assertDev057ExternalMigrationEntries(entries.slice(0,65)) : entries

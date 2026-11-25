@@ -1,3 +1,4 @@
+import {FMS_PROJECTION_CURRENT,FMS_PROJECTION_CURRENT_RELEASE_MODE} from './dev070-fms-projection-current-migration.mjs'
 import { DEV057_USERS_MIGRATIONS, DEV057_USERS_ENTRY_COUNT, DEV057_USERS_RELEASE_MODE } from './dev057-projed-users-migration.mjs'
 import { isDev057CallerProfileAppend } from './dev057-projed-caller-profile.mjs'
 import { DEV057_EXTERNAL_MIGRATION, DEV057_EXTERNAL_ENTRY_COUNT, DEV057_EXTERNAL_RELEASE_MODE } from './dev057-projed-external-migration.mjs'
@@ -261,7 +262,7 @@ export function assertToolInfrastructureTransition(root, beforeRevision, afterRe
     const beforeEntries = beforeMigrations.entries
     const afterEntries = afterMigrations.entries
     const staticInputs = ({ sourceRevision, manifestSha256, entries, ...inputs }) => inputs
-    const approvedSuffix = [...DEV058_MIGRATION_ENTRIES, ...DEV059_FMS_AUTHORITY_MIGRATIONS,...DEV070_MIGRATION_ENTRIES, ...DEV057_PROJED_MIGRATIONS, DEV057_EXTERNAL_MIGRATION, ...DEV057_USERS_MIGRATIONS].map(identity)
+    const approvedSuffix = [...DEV058_MIGRATION_ENTRIES, ...DEV059_FMS_AUTHORITY_MIGRATIONS,...DEV070_MIGRATION_ENTRIES, ...DEV057_PROJED_MIGRATIONS, DEV057_EXTERNAL_MIGRATION, ...DEV057_USERS_MIGRATIONS,FMS_PROJECTION_CURRENT].map(identity)
     if (!Array.isArray(beforeEntries) || !Array.isArray(afterEntries)
       || beforeMigrations.baselineCount !== 10 || afterMigrations.baselineCount !== 10
       || !same(staticInputs(beforeMigrations), staticInputs(afterMigrations))
@@ -271,7 +272,7 @@ export function assertToolInfrastructureTransition(root, beforeRevision, afterRe
       || !same(beforeEntries, afterEntries.slice(0, beforeEntries.length))
       || !same(beforeEntries.slice(DEV058_MIGRATION_PREFIX_COUNT).map(identity), approvedSuffix.slice(0, beforeEntries.length - DEV058_MIGRATION_PREFIX_COUNT))
       || !same(afterEntries.slice(DEV058_MIGRATION_PREFIX_COUNT).map(identity), approvedSuffix.slice(0, afterEntries.length - DEV058_MIGRATION_PREFIX_COUNT))) fail('SOURCE_INPUT_DRIFT')
-    disposition = afterEntries.length === DEV057_USERS_ENTRY_COUNT ? DEV057_USERS_RELEASE_MODE : afterEntries.length === DEV057_EXTERNAL_ENTRY_COUNT ? DEV057_EXTERNAL_RELEASE_MODE : afterEntries.length > DEV070_MIGRATION_ENTRY_COUNT ? DEV057_PROJED_RELEASE_MODE : afterEntries.length>DEV059_MIGRATION_ENTRY_COUNT?DEV070_RELEASE_MODE:afterEntries.length > DEV058_MIGRATION_ENTRY_COUNT
+    disposition = afterEntries.length === 69 ? FMS_PROJECTION_CURRENT_RELEASE_MODE : afterEntries.length === DEV057_USERS_ENTRY_COUNT ? DEV057_USERS_RELEASE_MODE : afterEntries.length === DEV057_EXTERNAL_ENTRY_COUNT ? DEV057_EXTERNAL_RELEASE_MODE : afterEntries.length > DEV070_MIGRATION_ENTRY_COUNT ? DEV057_PROJED_RELEASE_MODE : afterEntries.length>DEV059_MIGRATION_ENTRY_COUNT?DEV070_RELEASE_MODE:afterEntries.length > DEV058_MIGRATION_ENTRY_COUNT
       ? 'DEV059_FMS_AUTHORITY_APPEND'
       : 'DEV058_ROLE_POLICY_APPEND'
   } catch { fail('SOURCE_INPUT_DRIFT') }
