@@ -10,6 +10,7 @@
 - RD 自查：應用與 API focused 51 PASS、隔離跨 owner PostgreSQL 9 組 PASS（含有效非 admin 拒絕）、桌面與390px真元件／合成API操作 PASS、型別與前後端 build PASS。來源 CI 結果另依 PR；不將本機證據計為正式使用者驗收。
 - 統一清單追加自查：應用／HTTP／Auth／治理容器 85 項已通過（最後導覽相容修正重驗22項，其餘輸入不變沿用）、實際兩方 SQL 的隔離 PostgreSQL 13 組 PASS，涵蓋非 admin／錯誤 epoch／sibling 拒絕、同 Principal 合併與重複 Email 不合併、缺 ProJED reader 時其餘清單可讀；原 CAS／撤權／回復保護仍通過。原生本機正常登入、四系統資格讀取、分頁／非員工篩選、畫面停用／恢復與 server readback、外部審核及390px手機唯讀通過。型別、前後端 build、DB boundary 通過；發布接線最後86項 PASS，沿用未受影響的28項工具輪替結果。僅本機合成資料；正式未發布。
 - 首輪完整 CI `45542388010`：映像建置與PG18契約通過；532項來源契約中530通過、1既有skip、1失敗，唯一失敗是 routine-release fixture 仍預期65→66的一筆追加。已改為65→67兩筆追加，針對性2項通過；沿原PR接續 required CI，未略過關卡或重做本機登入／資料庫驗證。
+- 後續 `45543044537` 的來源契約已過，DEV-070本機ledger測試另有兩處舊suffix漏列071，已同步完整已核准migration清單，不放寬unknown ledger拒絕。本機完整來源531 PASS／1既有skip、DEV-070 49 PASS、工具輪替通過；工具封裝首次因共用pg版本未吻合鎖檔而失敗，在本工作樹工具專用目錄安裝原鎖檔14項依賴後通過。其餘獨立檢查接續執行：應用1603 PASS／7既有skip／1預設5秒逾時，逾時檔以單worker、30秒上限原樣重驗6 PASS；sandbox 64 PASS、abort／DB boundary／型別／前後端build通過。合成seed已清除，候選runtime與隔離資料庫續留供人類確認；本機結果不冒充required CI或正式驗收。
 
 <a id="pdm-session-revocation"></a>
 
