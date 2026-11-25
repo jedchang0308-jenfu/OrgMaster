@@ -86,6 +86,24 @@ it('restores without claiming an old Session was restored', async () => {
   expect(host.textContent).toContain('不具登入資格')
 })
 
+it('confirms the original restore without claiming current activation when a later command has disabled the account', async () => {
+  const latest = { ...external, enabled: false, revision: '4:2' }
+  const fetch = vi.fn().mockResolvedValueOnce(Response.json(snapshot([external])))
+    .mockRejectedValueOnce(new Error('response lost after restore committed'))
+    .mockResolvedValueOnce(Response.json(snapshot([latest])))
+    .mockResolvedValueOnce(Response.json(snapshot([latest])))
+  vi.stubGlobal('fetch', fetch); await render(); await click('恢復')
+  await click('查詢並重送原操作')
+  expect(fetch.mock.calls[3][1].body).toBe(fetch.mock.calls[1][1].body)
+  expect(host.textContent).toContain('原操作已確認；此帳號目前已停用。')
+  expect(host.textContent).not.toContain('已恢復啟用')
+  expect(host.textContent).not.toContain('操作結果尚未確認')
+  expect(host.querySelector('tbody')!.textContent).toContain('不具登入資格')
+  const restore = host.querySelector('tbody button') as HTMLButtonElement
+  expect(restore.textContent).toBe('恢復')
+  expect(restore.disabled).toBe(false)
+})
+
 it.each(['network', '503', 'invalid-response'])('keeps an unknown %s result fenced and reads back before replaying the same command', async failure => {
   const fetch = vi.fn().mockResolvedValueOnce(Response.json(snapshot([external])))
   if (failure === 'network') fetch.mockRejectedValueOnce(new Error('network'))

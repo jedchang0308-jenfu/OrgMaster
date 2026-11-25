@@ -87,7 +87,11 @@ export function GovernanceProjedUsers({ canManage, principalId }: { canManage: b
       const value = await request(command)
       if (actor.current !== expectedActor) return
       setRows(value.users); setLoaded(true); setPending(null)
-      if (command.action === 'restore') setNotice('已恢復啟用；需重新登入 ProJED，舊登入不會恢復。')
+      if (command.action === 'restore') {
+        const current = value.users.find(row => row.googleSubject === command.googleSubject)
+        setNotice(current?.enabled ? '已恢復啟用；需重新登入 ProJED，舊登入不會恢復。'
+          : current ? '原操作已確認；此帳號目前已停用。' : '原操作已確認；目前清單已無此帳號。')
+      }
     } catch (failure) {
       if (actor.current !== expectedActor) return
       if (sent && failure instanceof RequestFailure && failure.status < 500) setPending(null)
