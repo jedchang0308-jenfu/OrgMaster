@@ -30,6 +30,7 @@ const governanceSections = new Set<WorkspaceModuleContextMap['governance']['sect
   'administrators',
   'external',
   'projed-users',
+  'users',
   'identity',
   'catalog',
   'assignments',

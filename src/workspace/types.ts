@@ -33,7 +33,7 @@ export interface WorkspaceModuleContextMap {
   }
   'role-risks': { ruleId: string | null; employeeId: string | null }
   governance: {
-    section: 'identity' | 'catalog' | 'assignments' | 'delegation' | 'versions' | 'audit' | 'check' | 'administrators' | 'external' | 'projed-users'
+    section: 'identity' | 'catalog' | 'assignments' | 'delegation' | 'versions' | 'audit' | 'check' | 'administrators' | 'external' | 'users' | 'projed-users'
   }
 }
 

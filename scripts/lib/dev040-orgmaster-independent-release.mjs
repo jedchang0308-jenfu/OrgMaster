@@ -1,4 +1,4 @@
-import { DEV057_USERS_MIGRATION, assertDev057UsersMigrationEntries } from './dev057-projed-users-migration.mjs'
+import { DEV057_USERS_MIGRATIONS, assertDev057UsersMigrationEntries } from './dev057-projed-users-migration.mjs'
 import { DEV057_EXTERNAL_MIGRATION, DEV057_EXTERNAL_RELEASE_MODE, assertDev057ExternalMigrationEntries } from './dev057-projed-external-migration.mjs'
 import { DEV014_LIFECYCLE_RUNTIME_TARGET } from './dev014-principal-lifecycle-release.mjs'
 import { assertPrincipalOnlyRecoveryBinding } from './dev057-principal-only-release.mjs'
@@ -68,7 +68,7 @@ const PRODUCTION_MIGRATION_PATHS = [
   ...DEV070_MIGRATION_ENTRIES.map(entry => entry.path),
   ...DEV057_PROJED_MIGRATIONS.map(entry => entry.path),
   DEV057_EXTERNAL_MIGRATION.path,
-  DEV057_USERS_MIGRATION.path,
+  ...DEV057_USERS_MIGRATIONS.map(entry => entry.path),
 ]
 
 function fail(code, detail = '') {

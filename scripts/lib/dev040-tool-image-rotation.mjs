@@ -1,4 +1,4 @@
-import { DEV057_USERS_MIGRATION, DEV057_USERS_ENTRY_COUNT, DEV057_USERS_RELEASE_MODE } from './dev057-projed-users-migration.mjs'
+import { DEV057_USERS_MIGRATIONS, DEV057_USERS_ENTRY_COUNT, DEV057_USERS_RELEASE_MODE } from './dev057-projed-users-migration.mjs'
 import { isDev057CallerProfileAppend } from './dev057-projed-caller-profile.mjs'
 import { DEV057_EXTERNAL_MIGRATION, DEV057_EXTERNAL_ENTRY_COUNT, DEV057_EXTERNAL_RELEASE_MODE } from './dev057-projed-external-migration.mjs'
 import { spawnSync } from 'node:child_process'
@@ -261,7 +261,7 @@ export function assertToolInfrastructureTransition(root, beforeRevision, afterRe
     const beforeEntries = beforeMigrations.entries
     const afterEntries = afterMigrations.entries
     const staticInputs = ({ sourceRevision, manifestSha256, entries, ...inputs }) => inputs
-    const approvedSuffix = [...DEV058_MIGRATION_ENTRIES, ...DEV059_FMS_AUTHORITY_MIGRATIONS,...DEV070_MIGRATION_ENTRIES, ...DEV057_PROJED_MIGRATIONS, DEV057_EXTERNAL_MIGRATION, DEV057_USERS_MIGRATION].map(identity)
+    const approvedSuffix = [...DEV058_MIGRATION_ENTRIES, ...DEV059_FMS_AUTHORITY_MIGRATIONS,...DEV070_MIGRATION_ENTRIES, ...DEV057_PROJED_MIGRATIONS, DEV057_EXTERNAL_MIGRATION, ...DEV057_USERS_MIGRATIONS].map(identity)
     if (!Array.isArray(beforeEntries) || !Array.isArray(afterEntries)
       || beforeMigrations.baselineCount !== 10 || afterMigrations.baselineCount !== 10
       || !same(staticInputs(beforeMigrations), staticInputs(afterMigrations))

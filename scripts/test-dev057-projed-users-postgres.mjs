@@ -22,6 +22,7 @@ await withAdministrationPostgresFixture(async fixture => {
   }
  } finally { await admin.query('RESET ROLE') }
  await admin.query(await readFile('db/migrations/070_dev057_projed_user_directory.sql','utf8'))
+ await admin.query(await readFile('db/migrations/071_dev057_all_user_directory.sql','utf8'))
  const runtime = await connect('orgmaster-prod-runtime@jenfu-platform-prod.iam')
  const platform = await connect('platform-prod-runtime@jenfu-platform-prod.iam')
  const projed = await connect('projed_runtime_disposable')
@@ -120,6 +121,45 @@ await withAdministrationPostgresFixture(async fixture => {
  })
  await check('rollback-preserves-account-guard-and-audit',async()=>{
   const before=await get();await runtime.query('BEGIN');await manage(command(before,'disable'));await runtime.query('ROLLBACK');assert.deepEqual(await get(),before)
+ })
+ const allUsers=async(context=actor)=>(await runtime.query('SELECT orgmaster_core.read_user_directory_v1($1::jsonb) result',[JSON.stringify(context)])).rows[0].result
+ await check('all-user-reader-denies-nonadmin-forged-epoch-and-sibling-runtime',async()=>{
+  await assert.rejects(allUsers({...nonAdmin.actor,principalId:nonAdmin.principalId}),/USER_DIRECTORY_ADMIN_REQUIRED/)
+  await assert.rejects(allUsers({...actor,principalAuthEpoch:actor.principalAuthEpoch+1}),/IDENTITY_CONTEXT_REQUIRED/)
+  await assert.rejects(projed.query('SELECT orgmaster_core.read_user_directory_v1(null)'),/permission denied/)
+ })
+ await check('all-users-classify-current-employees-and-nonemployees-and-merge-only-exact-principal',async()=>{
+  const directory=await allUsers();assert.equal(directory.contractVersion,'orgmaster.users.v1')
+  assert.equal(directory.users.find(row=>row.principalId===actor.principalId).kind,'employee')
+  const personal=directory.users.filter(row=>row.principalId===publication.principalId)
+  assert.equal(personal.length,1);assert.equal(personal[0].kind,'nonemployee');assert.equal(personal[0].systems.filter(app=>app.applicationId==='projed').length,1)
+  assert.equal(directory.users.find(row=>row.principalId===actor.principalId).systems.find(app=>app.applicationId==='orgmaster').status,'ELIGIBLE')
+  assert.ok(directory.systems.every(app=>app.state==='READY'));assert.equal(directory.systems.length,4)
+  assert.ok(!JSON.stringify(directory).includes('private-board-reference'))
+  assert.deepEqual(Object.keys(personal[0]).sort(),['id','principalId','email','displayName','kind','systems'].sort())
+ })
+ await check('duplicate-email-before-enrollment-remains-a-distinct-nonemployee',async()=>{
+  await admin.query('BEGIN')
+  try {
+   const duplicate=randomUUID();await admin.query('INSERT INTO projed_core.profiles(id,email,display_name) VALUES($1,$2,$3)',[duplicate,'legacy-personal@example.invalid','Separate Google identity'])
+   await admin.query('INSERT INTO projed_core.google_identity_proofs(google_subject,local_user_id) VALUES($1,$2)',['same-email-distinct-subject',duplicate])
+   await admin.query('INSERT INTO projed_core.account_authorization_guards(local_user_id,active,revision) VALUES($1,true,1)',[duplicate])
+   const data=(await admin.query('SELECT orgmaster_core.read_user_directory_v1($1::jsonb) result',[JSON.stringify(actor)])).rows[0].result
+   const rows=data.users.filter(row=>row.email==='legacy-personal@example.invalid');assert.equal(rows.length,2)
+   assert.equal(rows.find(row=>row.id==='projed:same-email-distinct-subject').kind,'nonemployee')
+  } finally {await admin.query('ROLLBACK')}
+ })
+ await check('missing-ProJED-contract-retains-other-systems-and-does-not-fabricate-denials',async()=>{
+  await admin.query('BEGIN')
+  try {
+   await admin.query('ALTER FUNCTION orgmaster_core.projed_user_directory_v1() RENAME TO directory_unavailable_fixture')
+   await admin.query('DISCARD PLANS')
+   const data=(await admin.query('SELECT orgmaster_core.read_user_directory_v1($1::jsonb) result',[JSON.stringify(actor)])).rows[0].result
+   assert.equal(data.systems.find(app=>app.applicationId==='projed').state,'UNAVAILABLE')
+   assert.ok(data.systems.filter(app=>app.applicationId!=='projed').every(app=>app.state==='READY'))
+   assert.ok(data.users.some(row=>row.principalId===actor.principalId))
+   assert.ok(data.users.every(row=>row.systems.every(app=>app.applicationId!=='projed')))
+  } finally {await admin.query('ROLLBACK')}
  })
 },{platformRoot})
 console.log(JSON.stringify({status:'PASS',scope:'ISOLATED_SYNTHETIC_CROSS_OWNER_CONTRACTS',checks:passed,cleanup:'task-owned manager completed'}))

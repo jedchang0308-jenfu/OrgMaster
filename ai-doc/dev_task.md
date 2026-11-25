@@ -1,13 +1,14 @@
 # OrgMaster 開發任務
 
 
-## DEV-057：ProJED 使用者清單（2026-11-25）
+## DEV-057：所有使用者與子系統資格清單（2026-11-25）
 
 - 本機候選補齊：正常 sandbox 登入後的新 API 接 verified request-scoped DB，無 scope 拒絕；組織文件唯讀不再誤擋 ProJED 帳號管理。34 項服務／Auth、12 項治理容器自查通過；獨立候選已走真登入、清單與畫面停用／恢復，僅三筆合成帳號，正式與既有1010未改。候選的登入與 OrgMaster runtime 保留供人類確認；確認結束後由本任務清理。
 
-- 狀態：來源實作／隔離自查完成，正式未部署。治理中心清單包含既有未首登帳號、個人及已綁定外部帳號，可查資格並停用／恢復；不讀私人內容，不改註冊方式。
-- 對應 ProJED/DEV-139 metadata contract 0052；OrgMaster forward-only 070，正常來源發布接線保留 65→66 exact append 與既有 required CI。驗證及操作邊界見[本切片契約](specs/DEV-057-identity-and-grant-contract-boundary.md#projed-user-directory)。
+- 狀態：依人類確認改為「所有使用者」，分類全部／OrgMaster／AI-PDM／JF-FMS／ProJED，身分只分員工／非員工。同 Principal 合併、相同 Email 不誤合併；保留未首登 ProJED 帳號、外部協作資格、原停用／恢復及其他 App 角色管理入口，不讀私人內容、不改註冊或准入政策。正式未部署。
+- 對應 ProJED/DEV-139 metadata contract 0052；OrgMaster 070 保持原 bytes，新增唯讀 071，正常來源發布維持 exact 65／66→67 append 與既有 required CI。驗證及操作邊界見[本切片契約](specs/DEV-057-identity-and-grant-contract-boundary.md#projed-user-directory)。
 - RD 自查：應用與 API focused 51 PASS、隔離跨 owner PostgreSQL 9 組 PASS（含有效非 admin 拒絕）、桌面與390px真元件／合成API操作 PASS、型別與前後端 build PASS。來源 CI 結果另依 PR；不將本機證據計為正式使用者驗收。
+- 統一清單追加自查：應用／HTTP／Auth／治理容器 85 項已通過（最後導覽相容修正重驗22項，其餘輸入不變沿用）、實際兩方 SQL 的隔離 PostgreSQL 13 組 PASS，涵蓋非 admin／錯誤 epoch／sibling 拒絕、同 Principal 合併與重複 Email 不合併、缺 ProJED reader 時其餘清單可讀；原 CAS／撤權／回復保護仍通過。原生本機正常登入、四系統資格讀取、分頁／非員工篩選、畫面停用／恢復與 server readback、外部審核及390px手機唯讀通過。型別、前後端 build、DB boundary 通過；發布接線最後86項 PASS，沿用未受影響的28項工具輪替結果。僅本機合成資料；正式未發布。
 
 <a id="pdm-session-revocation"></a>
 

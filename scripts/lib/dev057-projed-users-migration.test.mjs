@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs'
 import test from 'node:test'
 import {buildOrgmasterPackage} from '../dev010-n1c-orgmaster-package.mjs'
 import {buildDev040MigrationBundle,sourceSha256,unwrapMigrationTransaction} from './dev040-orgmaster-independent-release.mjs'
-import {assertDev057UsersAppend,assertDev057UsersMigrationEntries,assertDev057UsersReleaseAuthority,DEV057_USERS_MIGRATION,DEV057_USERS_REMEDIATION,DEV057_USERS_RELEASE_MODE} from './dev057-projed-users-migration.mjs'
+import {assertDev057UsersAppend,assertDev057UsersMigrationEntries,assertDev057UsersReleaseAuthority,DEV057_USERS_MIGRATIONS,DEV057_USERS_REMEDIATION,DEV057_USERS_RELEASE_MODE} from './dev057-projed-users-migration.mjs'
 import {assertReviewedOrgmasterMigrationEntries} from './dev057-projed-principal-migration.mjs'
 import {parseDeployProductionArgs} from '../dev040-deploy-production.mjs'
 import {assertMigrationReceipt} from './dev012-owner-stage-executor.mjs'
@@ -14,13 +14,14 @@ const files=new Map(profile.migrations.entries.map(row=>[row.path,readFileSync(r
 const after=buildDev040MigrationBundle(profile,buildOrgmasterPackage(n1c),files,'a'.repeat(40)).bundle
 const before={...after,entries:after.entries.slice(0,65)}
 test('user directory pins its real SQL and appends only after exact released 65 entries',()=>{
- const bytes=files.get(DEV057_USERS_MIGRATION.path)
- assert.equal(sourceSha256(bytes),DEV057_USERS_MIGRATION.sourceSha256)
- assert.equal(sourceSha256(unwrapMigrationTransaction(bytes)),DEV057_USERS_MIGRATION.appliedSha256)
+ for(const migration of DEV057_USERS_MIGRATIONS){const bytes=files.get(migration.path)
+ assert.equal(sourceSha256(bytes),migration.sourceSha256)
+ assert.equal(sourceSha256(unwrapMigrationTransaction(bytes)),migration.appliedSha256)}
  assert.equal(assertReviewedOrgmasterMigrationEntries(after.entries),after.entries)
- assert.equal(assertDev057UsersAppend(before,after).pendingMigrationCount,1)
- for(const count of [0,60,64,66])assert.throws(()=>assertDev057UsersAppend({...before,entries:after.entries.slice(0,count)},after))
- for(const index of [0,30,64,65]){const changed=structuredClone(after);changed.entries[index].appliedSha256='0'.repeat(64);assert.throws(()=>assertDev057UsersMigrationEntries(changed.entries))}
+ assert.equal(assertDev057UsersAppend(before,after).pendingMigrationCount,2)
+ assert.equal(assertDev057UsersAppend({...before,entries:after.entries.slice(0,66)},after).pendingMigrationCount,1)
+ for(const count of [0,60,64,67])assert.throws(()=>assertDev057UsersAppend({...before,entries:after.entries.slice(0,count)},after))
+ for(const index of [0,30,64,65,66]){const changed=structuredClone(after);changed.entries[index].appliedSha256='0'.repeat(64);assert.throws(()=>assertDev057UsersMigrationEntries(changed.entries))}
  assert.throws(()=>assertDev057UsersAppend({...before,ledger:'foreign'},after))
 })
 test('user directory authority and CLI require its distinct recipe without predecessor overrides',()=>{
@@ -34,12 +35,12 @@ test('user directory authority and CLI require its distinct recipe without prede
  assert.equal(parseDeployProductionArgs(['--check','--dev057-projed-users-append',infra]).dev057ProjedUsersAppend,true)
  assert.throws(()=>parseDeployProductionArgs(['--dev057-projed-users-append','--dev057-projed-external-append',infra]))
 })
-test('user directory owner receipt requires 66 exact entries and isolated databases',()=>{
+test('user directory owner receipt requires 67 exact entries and isolated databases',()=>{
  const intent={ownerApplicationId:'orgmaster',sourceRevision:'a'.repeat(40),migrationManifestSha256:after.manifestSha256}
- const plan={releaseMode:DEV057_USERS_RELEASE_MODE,pendingMigrationCount:1}
- const core={baselineCount:10,minimumLedgerCount:10,schemaVersion:'jenfu.dev012.migration-receipt.v1',ownerApplicationId:'orgmaster',sourceRevision:intent.sourceRevision,manifestSha256:after.manifestSha256,status:'PASS',boundaryStatus:'PASS',applied:1,replayed:65,ledgerCount:66,database:'jenfu_prod',ledger:'orgmaster_core.schema_migrations',crossDatabaseDenials:[{database:'jenfu_dev',denied:true},{database:'jenfu_stg',denied:true}]}
+ const plan={releaseMode:DEV057_USERS_RELEASE_MODE,pendingMigrationCount:2}
+ const core={baselineCount:10,minimumLedgerCount:10,schemaVersion:'jenfu.dev012.migration-receipt.v1',ownerApplicationId:'orgmaster',sourceRevision:intent.sourceRevision,manifestSha256:after.manifestSha256,status:'PASS',boundaryStatus:'PASS',applied:2,replayed:65,ledgerCount:67,database:'jenfu_prod',ledger:'orgmaster_core.schema_migrations',crossDatabaseDenials:[{database:'jenfu_dev',denied:true},{database:'jenfu_stg',denied:true}]}
  const seal=core=>({...core,receiptSha256:sha256(canonicalize(core))})
  const value=seal(core)
  assert.doesNotThrow(()=>assertMigrationReceipt(value,profile,intent,{allowForward:true,forwardPlan:plan}))
- for(const delta of [{ledgerCount:65},{applied:2,replayed:64},{crossDatabaseDenials:[]},{database:'jenfu_dev'}])assert.throws(()=>assertMigrationReceipt(seal({...core,...delta}),profile,intent,{allowForward:true,forwardPlan:plan}))
+ for(const delta of [{ledgerCount:66},{applied:3,replayed:64},{crossDatabaseDenials:[]},{database:'jenfu_dev'}])assert.throws(()=>assertMigrationReceipt(seal({...core,...delta}),profile,intent,{allowForward:true,forwardPlan:plan}))
 })

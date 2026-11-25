@@ -27,6 +27,7 @@ async function request(command?: ProjedUserCommand): Promise<ProjedUsersSnapshot
 }
 
 function userLabel(row: ProjedUserRecord) { return row.displayName || row.email || row.principalId || row.googleSubject }
+export { request as requestProjedUsers, RequestFailure as ProjedUsersRequestFailure }
 
 export function GovernanceProjedUsers({ canManage, principalId }: { canManage: boolean; principalId: string }) {
   const [rows, setRows] = useState<ProjedUserRecord[]>([])

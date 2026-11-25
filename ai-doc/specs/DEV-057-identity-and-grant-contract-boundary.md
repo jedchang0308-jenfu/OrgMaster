@@ -2,9 +2,13 @@
 
 
 <a id="projed-user-directory"></a>
-## ProJED 使用者清單與停用／恢復（2026-11-25）
+## 所有使用者與子系統資格管理（2026-11-25）
 
-本切片沿 ORGMASTER/DEV-057，對應 ProJED/DEV-139。治理中心新增「ProJED 使用者」；搜尋 Email／名稱／Principal、篩選個人／外部與啟用狀態，顯示登入資格、最小身分登錄狀態與外部協作資格。既有已遷移、尚未在新平台首登的帳號也須可見、可停用；未綁定的待審邀請仍在原外部資格頁，不視為已存在的帳號。
+本切片沿 ORGMASTER/DEV-057，對應 ProJED/DEV-139。治理中心統一為「所有使用者」，頁內分「全部／OrgMaster／AI-PDM／JF-FMS／ProJED」。依 Principal 精確彙整同一身分，不以相同 Email 合併不同帳號；尚未首登的 ProJED 帳號仍有獨立列。身分僅「員工／非員工」：以 OrgMaster 的有效員工關聯判別，不依 Email 網域、ProJED personal/external 或角色名稱推導。個人與外部協作者同列非員工，外部資格保留在 ProJED 明細及原審核頁。
+
+- `GET /api/orgmaster/users/v1` 是唯讀、no-store 的 exact-Principal OrgMaster app-admin 專用入口；使用與原管理端相同的 verified Session／epoch。自有 `read_user_directory_v1(jsonb)` 只彙整 OrgMaster 已發布身分／資格契約及 ProJED 最小帳號契約，無 sibling core、私人內容、上游即時 API 或新身份資料庫。查閱不必啟動 PDM／FMS runtime，本機重用現有隔離 SQL 與登入環境。
+- 子系統資料失效／尚未提供時明示無法取得，不能顯示為停用或已取得資格。資格來源是現行 OrgMaster Session、PDM V6、FMS V4＋准入及 ProJED 原帳號契約；清單不授予新權限，也不取代各 App 最終登入、工作區或資料授權。
+- 保留左側治理選單、頁內系統分頁、搜尋／篩選與主清單；使用者側欄顯示各系統資格。ProJED 沿原 CAS 停用／恢復；其他 App 只導向既有角色管理，不建立跨系統停用開關。ProJED 分頁提供原外部審核入口，舊 `projed-users`／`external` deep link 相容。管理權、手機唯讀、未知結果先讀回再重送原命令及跨帳號清除仍有效。
 
 - 維持現有註冊方式；本清單不新增管理員核准註冊條件。Google subject 是精確帳號鍵，Email 僅查詢顯示。個人身分與外部資格分開，登入資格不等於可存取公司／他人看板。
 - 本機候選沿既有 sandbox 正常登入；新管理服務只從 middleware 已驗證的 request-scoped DB 取得連線，無 scope 直接拒絕，無正式連線 fallback。ProJED 帳號管理不依賴主組織文件的編輯／唯讀狀態；治理權限、手機唯讀及未確認命令限制仍保留。
@@ -13,9 +17,9 @@
 - 停用只影響 ProJED：原子更新其 account guard 並前進 revision，主站／Quick 舊 Session 立即失效；不刪資料、不全域停用其他 App。恢復前進新 revision，須重新登入；不復活舊 Session 或已停用／撤回的外部邀請。Employee／上游身分本身失效時，仍顯示不具登入資格。
 - 命令採 UUID commandId、Google subject、opaque expectedRevision 與 disable/restore；verified actor 由伺服器提供。CAS、防並行覆寫、同交易 audit／receipt、防重送沿既有機制；首登與管理共用 subject lock，連尚不存在的 admission 也須序列化。未知結果先讀回，再以原 commandId 核對既有收據並回傳當前清單；不建立第二個命令或宣稱未知結果成功。
 
-Schema 順序為 ProJED `0052_orgmaster_user_directory_v1.sql`，再 OrgMaster `070_dev057_projed_user_directory.sql`。前者只授既有 OrgMaster owner/migrator 限定 metadata contract；OrgMaster runtime 不得直接讀 ProJED core 或調用該 contract，僅可執行經 Session／admin 驗證的自有管理函式。070 append 封閉為已驗證 65 → 66 筆（或完整重播），正常入口 `npm run deploy:production -- --dev057-projed-users-append --dev057-infra-ref=…`；保留舊 064／065 recipe 的 migration-only 相容性、required Source QC／來源保護及既有恢復。這是來源接線，不是正式執行授權。
+Schema 順序為 ProJED `0052_orgmaster_user_directory_v1.sql`，再 OrgMaster `070_dev057_projed_user_directory.sql`、`071_dev057_all_user_directory.sql`。不改 070 已驗證 bytes；071 僅新增管理員 metadata reader。OrgMaster runtime 不得直接讀 ProJED core 或調用跨 owner contract，只能執行經 Session／admin 驗證的自有函式。既有 users append recipe 精確接受 65／66 → 67 筆（或完整重播），070 之前所有 entry／checksum 不變；正常入口仍為 `npm run deploy:production -- --dev057-projed-users-append --dev057-infra-ref=…`。保留舊 064／065／066 證據讀取、migration-only 相容性、required Source QC／來源保護及既有恢復。這是來源接線，不是正式執行授權。
 
-必要驗證重用現有自查：`npm run test:dev-057:projed-users`；`ORGMASTER_DEV057_PLATFORM_ROOT` 與 `ORGMASTER_DEV057_PROJED_ROOT` 指定受測來源後跑 `npm run test:dev-057:projed-users:postgres`；UI 用 `node scripts/verify-dev057-projed-users-ui.mjs`。隔離 PostgreSQL 套用兩方實際 SQL，涵蓋首登前停用、非 admin／失效 Session 拒絕、跨 owner 隔離、CAS／重送、並行、主站／Quick 撤銷／恢復 fence、外部邀請不復活及 rollback。UI 使用實際元件與合成 API，含桌面／390px；不宣稱正式端對端驗收。不新增 required gate。正式 migration／runtime 發布另依人類指定的環境與動作執行，本輪未部署。
+必要驗證重用現有自查：原 `npm run test:dev-057:projed-users` 保留 ProJED 契約回歸；統一清單涵蓋 `server/orgmasterUsers.test.ts`、`src/components/GovernanceUsers.test.tsx` 與治理容器測試，沿既有 Vitest／required CI 執行。`ORGMASTER_DEV057_PLATFORM_ROOT` 與 `ORGMASTER_DEV057_PROJED_ROOT` 指定受測來源後跑 `npm run test:dev-057:projed-users:postgres`，套用實際0052／070／071並驗管理員邊界、身分分類／精確合併與部分來源失效；原 CAS／撤權／回復案例保留。原 `verify-dev057-projed-users-ui.mjs` 僅是舊 ProJED 元件的相容性 fixture，不能當作統一清單 UI 證據；新介面另在保留的隔離候選走正常登入、桌面／390px、側欄停用／恢復與伺服器讀回。不宣稱正式端對端驗收，不新增 required gate。正式 migration／runtime 發布另依人類指定的環境與動作執行，本輪未部署。
 
 > ProJED／DEV-139 同步修訂（2026-11-19）：本分支整合 `master@a8830e9fefb0c805eaa35dec2c10fa412f408f89`。master 既有 60-entry release prefix、001–064 SQL 與 PDM／FMS／行政權限流程保留；未發布的 ProJED draft 041／042／043 僅改名為 **065／066／067**，SQL bytes 未變。Git blob 已核對全部62份 master SQL、60-entry profile prefix 與三份 draft 內容不變。現行 profile 共 **63 entries**，ProJED 專用 `DEV057_PROJED_PRINCIPAL_APPEND` 僅接受 60／61／62／63 exact ledger prefix，普通發布仍零 DDL。舊段落中的 38→41 與 041–043 是歷史來源證據，不能用於本版正式套用。現階段僅 source integration，正式 migration、runtime／traffic、IAM／Secret 變更均未執行；required CI 與最新原生資料庫證據待本版跑完回填。
 

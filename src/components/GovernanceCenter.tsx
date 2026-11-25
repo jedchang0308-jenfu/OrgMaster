@@ -1,5 +1,5 @@
 import { GovernanceProjedExternal } from './GovernanceProjedExternal'
-import { GovernanceProjedUsers } from './GovernanceProjedUsers'
+import { GovernanceUsers } from './GovernanceUsers'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { RefreshCw, AlertTriangle } from 'lucide-react'
 import { loadGovernance, loadGovernanceAudit, loadGovernanceCommandResult, patchGovernanceDraft, publishGovernancePolicy, setActiveGovernanceVersion, validateGovernanceAssignment, type GovernanceApiSnapshot, type GovernanceVersionSummary } from '../governance/apiClient'
@@ -19,13 +19,12 @@ import './GovernanceCenter.css'
 import { useOrgMasterPermissions } from '../auth/OrgMasterPermissionProvider'
 import { useAuthSession } from '../auth/AuthGate'
 
-export type GovernanceSectionId = 'identity' | 'catalog' | 'assignments' | 'delegation' | 'versions' | 'audit' | 'check' | 'administrators' | 'external' | 'projed-users'
+export type GovernanceSectionId = 'identity' | 'catalog' | 'assignments' | 'delegation' | 'versions' | 'audit' | 'check' | 'administrators' | 'external' | 'users' | 'projed-users'
 type Props = { employees: Employee[]; departments: Department[]; roles: Role[]; currentOrganizationVersionId: string | null; currentOrganizationRevision?: string | null; visibility?: 'active' | 'hidden'; initialSection?: GovernanceSectionId; onSectionChange?: (section: GovernanceSectionId) => void; workspaceMutationAllowed?: boolean; refreshToken?: number; onChanged?: () => void; onOpenEmployee?: (employeeId: string) => void }
 type SectionId = GovernanceSectionId
 const NAV: Array<{ id: SectionId; label: string }> = [
   {id:'administrators',label:'平台管理員'},
-  { id: 'external', label: 'ProJED 外部人員' },
-  { id: 'projed-users', label: 'ProJED 使用者' },
+  { id: 'users', label: '所有使用者' },
   { id: 'identity', label: '帳號治理' }, { id: 'catalog', label: '應用角色目錄' }, { id: 'assignments', label: '角色指派' }, { id: 'delegation', label: '角色代理' }, { id: 'versions', label: '發布版本' }, { id: 'audit', label: '稽核' }, { id: 'check', label: '指派檢查' },
 ]
 const now = () => new Date().toISOString()
@@ -55,7 +54,7 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
   const auth = useAuthSession()
   const actor = auth?.session.user ?? { principalId: '', employeeId: '' }
   const [revision, setRevision] = useState('')
-  const [section, setSection] = useState<SectionId>(initialSection)
+  const [section, setSection] = useState<SectionId>(initialSection === 'projed-users' ? 'users' : initialSection)
   const [failure, setFailure] = useState<GovernanceFailureView | null>(null)
   const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
@@ -90,7 +89,7 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
   useEffect(() => { if (visibility === 'hidden') return; void refresh() }, [refresh, refreshToken, visibility])
   useEffect(() => { const media = window.matchMedia('(max-width: 767px)'); const update = () => setMobileReadOnly(media.matches); update(); media.addEventListener('change', update); return () => media.removeEventListener('change', update) }, [])
   useEffect(() => { if (!notice) return; const timer = window.setTimeout(() => setNotice(''), 3200); return () => window.clearTimeout(timer) }, [notice])
-  useEffect(() => { setSection(initialSection); setPrivilegedView(false) }, [initialSection])
+  useEffect(() => { setSection(initialSection === 'projed-users' ? 'users' : initialSection); setPrivilegedView(false) }, [initialSection])
   useEffect(() => { const timer = window.setInterval(() => setClockNow(Date.now()), 60_000); return () => window.clearInterval(timer) }, [])
   useEffect(() => { const dialog = assignmentDialogRef.current; if (assignmentDialog && dialog && !dialog.open) dialog.showModal(); else if (!assignmentDialog && dialog?.open) dialog.close() }, [assignmentDialog])
 
@@ -400,8 +399,8 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
   async function checkAssignment() { const value = assignmentValue(); if (!value) return; setBusy(true); clearFeedback(); try { const result = await validateGovernanceAssignment(value); setCheckResult(result.payload); if (result.payload.status === 'valid') setNotice('指派檢查通過，尚未寫入治理資料') } catch (error) { recordFailure(error) } finally { setBusy(false) } }
 
   const content = <section className="governance-center governance-center--workspace" role="region" aria-labelledby="governance-title"><h1 className="governance-visually-hidden" id="governance-title">角色指派治理</h1><div className="governance-center__body"><nav className="governance-nav" aria-label="治理區段">{NAV.map((item) => <button type="button" key={item.id} className={section === item.id ? 'is-active' : ''} onClick={() => changeSection(item.id)}>{item.label}</button>)}</nav><main className="governance-main">{mobileReadOnly && <div className="governance-readonly" role="status">手機僅供閱讀</div>}{failure && <div className="governance-error" role="alert"><span>{failure.message}</span>{failure.canReload && <button type="button" className="button" onClick={() => void refresh()}>重新載入</button>}</div>}{notice && <div className="governance-notice" role="status">{notice}</div>}{unconfirmedCommand && <div className="governance-readonly" role="status"><span>上一筆操作結果尚未確認，暫停新的變更。</span><button type="button" className="button" disabled={busy} onClick={() => { const pending = unconfirmedRef.current; if (!pending) return; setBusy(true); void confirmCommandResult(pending).finally(() => setBusy(false)) }}>查詢操作結果</button>{unconfirmedCommand.canRetry && <button type="button" className="button" disabled={busy} onClick={() => void retryUnconfirmedCommand()}>重送原操作</button>}</div>}{!draft && !failure && <div className="governance-loading" role="status">載入治理資料…</div>}
-{section === 'external' && <GovernanceProjedExternal canManage={identityMutationAllowed} principalId={actorPrincipalId} />}
-{section === 'projed-users' && <GovernanceProjedUsers canManage={allows('orgmaster.governance.manage') && !mobileReadOnly && !unconfirmedCommand} principalId={actorPrincipalId} />}
+{section === 'external' && <><button className="users-link" onClick={() => { setSection('users'); onSectionChange?.('users') }}>← 所有使用者</button><GovernanceProjedExternal canManage={identityMutationAllowed} principalId={actorPrincipalId} /></>}
+{section === 'users' && <GovernanceUsers canManage={allows('orgmaster.governance.manage') && !mobileReadOnly && !unconfirmedCommand} principalId={actorPrincipalId} initialSystem={initialSection === 'projed-users' ? 'projed' : 'all'} onExternal={() => { setSection('external'); onSectionChange?.('external') }} onRoles={() => { setSection('assignments'); onSectionChange?.('assignments') }} />}
 {draft && section === 'administrators' && <GovernanceAdministrators employees={employees} onChanged={() => void refresh(false)} />}
 {draft && section === 'identity' && <section className="governance-section"><SectionHeading eyebrow="Employee identity governance" title="帳號治理" count={`${identityLinks.length} 筆`} /><p className="governance-muted">這裡是跨員工檢視與異常定位；建立或管理登入身分請回到指定員工的「登入身分」明細。</p><div className="governance-table-wrap"><table className="governance-table"><thead><tr><th>登入身分</th><th>Employee</th><th>Issuer</th><th>帳號類型</th><th>狀態</th>{identityMutationAllowed && <th>操作</th>}</tr></thead><tbody>{identityLinks.map((link) => { const admission = draft.principalAdmissions?.find((candidate) => candidate.identityLinkId === link.id && candidate.status === 'active'); const isCurrent = link.principalId === actorPrincipalId; const canStatus = identityMutationAllowed && !admission && !isCurrent; return <tr key={link.id}><td>{link.subjectHint}<small>Principal {link.principalId}</small></td><td><button type="button" className="governance-employee-link" onClick={() => onOpenEmployee?.(link.employeeId)}>{employeeName(employees, link.employeeId)}</button></td><td>{link.issuer}</td><td>{accountTypeLabel(admission?.accountType)}</td><td>{link.status === 'active' ? '有效' : '停用'}</td>{identityMutationAllowed && <td>{canStatus ? <button type="button" className="button button--quiet" disabled={busy} onClick={() => void runCommand({ type: 'SET_IDENTITY_LINK_STATUS', commandId: crypto.randomUUID(), reason: link.status === 'active' ? '停用身分連結' : '重新啟用身分連結', id: link.id, status: link.status === 'active' ? 'inactive' : 'active' }, link.status === 'active' ? '身分連結已停用' : '身分連結已重新啟用')}>{link.status === 'active' ? '停用' : '重新啟用'}</button> : <small>{admission ? '已有帳號准入' : isCurrent ? '目前登入身分' : '唯讀'}</small>}</td>}</tr> })}</tbody></table></div>{!identityLinks.length && <p className="governance-empty">尚無已連結的登入身分；請從員工明細開始建立關係。</p>}</section>}
 {draft && section === 'catalog' && <section className="governance-section"><SectionHeading eyebrow="External role catalog" title="應用角色目錄" count={`${(catalog?.roles.length ?? 0) + internalRoles.length} 筆`} />

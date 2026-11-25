@@ -49,6 +49,8 @@ async function render(snapshot: GovernanceApiSnapshot, canPublish = false, _runt
 beforeEach(() => {
   vi.clearAllMocks()
   Object.defineProperty(window, 'matchMedia', { configurable: true, value: () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }) })
+  Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value() { this.open = true } })
+  Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value() { this.open = false } })
 })
 afterEach(() => { for (const { root, host } of mounted.splice(0)) { act(() => root.unmount()); host.remove() } vi.unstubAllGlobals() })
 
@@ -59,7 +61,7 @@ describe('ProJED users management in a read-only organization workspace', () => 
     mocks.allows.mockImplementation((permission: string) => manage && permission === 'orgmaster.governance.manage')
     Object.defineProperty(window, 'matchMedia', { configurable: true, value: () => ({ matches: mobile, addEventListener: vi.fn(), removeEventListener: vi.fn() }) })
     const user = { googleSubject: 'fixture-google-subject', accountId: 'fixture-account', principalId: 'fixture-principal', email: 'fixture@example.invalid', displayName: '測試使用者', kind: 'personal', enabled: true, revision: '3:7', identityStatus: 'ACTIVE', loginEligible: true, externalStatus: 'NONE' }
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ contractVersion: 'orgmaster.projed-users.v1', users: [user, { ...user, googleSubject: 'fixture-disabled-subject', enabled: false, loginEligible: false }] })))
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ contractVersion: 'orgmaster.users.v1', systems: ['orgmaster','ai-pdm','financial-management-system','projed'].map(applicationId=>({applicationId,state:'READY'})), users: [user, { ...user, googleSubject: 'fixture-disabled-subject', enabled: false, loginEligible: false }].map(account=>({id:account.googleSubject,principalId:account.principalId,displayName:account.displayName,email:account.email,kind:'nonemployee',systems:[{applicationId:'projed',status:account.enabled?'ELIGIBLE':'DISABLED',projed:account}]})) })))
     const host = document.createElement('div')
     document.body.append(host)
     const root = createRoot(host)
@@ -70,22 +72,25 @@ describe('ProJED users management in a read-only organization workspace', () => 
 
   it('keeps ProJED account disable and restore available to a governance manager while the organization is read-only', async () => {
     const host = await renderUsers()
-    expect([...host.querySelectorAll('tbody button')].map(button => button.textContent)).toEqual(['停用', '恢復'])
-    expect([...host.querySelectorAll<HTMLButtonElement>('tbody button')].every(button => !button.disabled)).toBe(true)
+    await act(async () => host.querySelector<HTMLButtonElement>('tbody button')!.click())
+    expect([...host.querySelectorAll('dialog button')].some(button => button.textContent === '停用')).toBe(true)
+    expect([...host.querySelectorAll<HTMLButtonElement>('dialog button')].every(button => !button.disabled)).toBe(true)
     expect(mocks.allows).toHaveBeenCalledWith('orgmaster.governance.manage')
   })
 
   it('keeps account metadata read-only without governance manage permission', async () => {
     const host = await renderUsers(false)
     expect(host.querySelectorAll('tbody tr')).toHaveLength(2)
-    expect(host.querySelectorAll('tbody button')).toHaveLength(0)
+    await act(async () => host.querySelector<HTMLButtonElement>('tbody button')!.click())
+    expect([...host.querySelectorAll('dialog button')].some(button => /^(停用|恢復)$/.test(button.textContent ?? ''))).toBe(false)
   })
 
   it('keeps the mobile account directory read-only even with governance manage permission', async () => {
     const host = await renderUsers(true, true)
     expect(host.textContent).toContain('手機僅供閱讀')
     expect(host.querySelectorAll('tbody tr')).toHaveLength(2)
-    expect(host.querySelectorAll('tbody button')).toHaveLength(0)
+    await act(async () => host.querySelector<HTMLButtonElement>('tbody button')!.click())
+    expect([...host.querySelectorAll('dialog button')].some(button => /^(停用|恢復)$/.test(button.textContent ?? ''))).toBe(false)
   })
 })
 
