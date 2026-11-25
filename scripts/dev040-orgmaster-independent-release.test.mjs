@@ -1,4 +1,4 @@
-import { DEV057_USERS_ENTRY_COUNT, assertDev057UsersMigrationEntries } from './lib/dev057-projed-users-migration.mjs'
+import {assertFmsProjectionCurrentEntries} from './lib/dev070-fms-projection-current-migration.mjs'
 import { DEV057_EXTERNAL_ENTRY_COUNT, assertDev057ExternalMigrationEntries } from './lib/dev057-projed-external-migration.mjs'
 import assert from 'node:assert/strict'
 import crypto from 'node:crypto'
@@ -392,12 +392,12 @@ test('OrgMaster exact baseline and all forward owner migrations through 070', ()
   const files = new Map(profile.migrations.entries.map((entry) => [entry.path, fs.readFileSync(new URL(`../${entry.path}`, import.meta.url))]))
   assert.equal(verifyDev040MigrationBytes(profile, files), true)
   const bundle = buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), files, 'a'.repeat(40))
-  assert.equal(bundle.bundle.entries.length, DEV057_USERS_ENTRY_COUNT)
+  assert.equal(bundle.bundle.entries.length, 71)
   assert.deepEqual(bundle.bundle.entries.slice(DEV070_MIGRATION_ENTRY_COUNT - 10, DEV070_MIGRATION_ENTRY_COUNT).map(entry=>entry.version),
     ['dev070-orgmaster-055','dev057-orgmaster-056','dev057-orgmaster-057','dev059-orgmaster-058','dev059-orgmaster-059','dev059-orgmaster-060','dev059-orgmaster-061','dev059-orgmaster-062','dev059-orgmaster-063','dev059-orgmaster-064'])
   assertDev057ProjedMigrationEntries(bundle.bundle.entries.slice(0,64))
   assertDev057ExternalMigrationEntries(bundle.bundle.entries.slice(0,65))
-  assertDev057UsersMigrationEntries(bundle.bundle.entries)
+  assertFmsProjectionCurrentEntries(bundle.bundle.entries)
   assertDev070MigrationEntries(bundle.bundle.entries.slice(0, DEV070_MIGRATION_ENTRY_COUNT))
   assert.deepEqual(bundle.bundle.entries.slice(DEV059_MIGRATION_ENTRY_COUNT, DEV070_MIGRATION_ENTRY_COUNT).map(migrationIdentity),DEV070_MIGRATION_ENTRIES.map(migrationIdentity))
   assertDev059MigrationEntries(bundle.bundle.entries.slice(0,DEV059_MIGRATION_ENTRY_COUNT))
@@ -483,14 +483,14 @@ test('OrgMaster exact baseline and all forward owner migrations through 070', ()
   }
 })
 
-test('current 70-entry source freezes only the reviewed 64-entry Principal generation when explicitly selected', () => {
+test('current 71-entry source freezes only the reviewed 64-entry Principal generation when explicitly selected', () => {
   const files = new Map(profile.migrations.entries.map(entry => [entry.path, fs.readFileSync(new URL(`../${entry.path}`, import.meta.url))]))
   const sourceRevision = 'a'.repeat(40)
   const build = selection => buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), files, sourceRevision, selection)
   const principalSelection = { releaseMode: DEV057_PROJED_RELEASE_MODE, executionMode: 'migration_only' }
   const full = build(), selected = build(principalSelection)
-  assert.equal(profile.migrations.entries.length, 70)
-  assert.equal(full.bundle.entries.length, 70)
+  assert.equal(profile.migrations.entries.length, 71)
+  assert.equal(full.bundle.entries.length, 71)
   assert.equal(selected.bundle.entries.length, 64)
   assert.deepEqual(selected.bundle.entries, full.bundle.entries.slice(0, 64))
   assertDev057ProjedMigrationEntries(selected.bundle.entries)

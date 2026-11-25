@@ -430,7 +430,7 @@ export function createOrgmasterAuthRuntime(environment: NodeJS.ProcessEnv = proc
   const database = createOrgmasterDatabase(configResult.config.postgresUrl,environment)
   const localAdministration=createOrgmasterLocalAdministrationRuntime({database,connectionString:configResult.config.postgresUrl,environment})
   const localProviders=localAdministration?localAdministrationProviders(localAdministration):undefined
-  if(localAdministration&&(configResult.config.publicBaseUrl.origin!=='http://localhost:1010'||configResult.config.identityAudience!=='jenfu-platform-nonprod'||configResult.config.identityIssuer!=='https://securetoken.google.com/jenfu-platform-nonprod'))throw new Error('DEV070_LOCAL_ADMINISTRATION_UNAVAILABLE')
+  if(localAdministration&&(configResult.config.publicBaseUrl.origin!==localAdministrationPeer(localAdministration).audience||configResult.config.identityAudience!=='jenfu-platform-nonprod'||configResult.config.identityIssuer!=='https://securetoken.google.com/jenfu-platform-nonprod'))throw new Error('DEV070_LOCAL_ADMINISTRATION_UNAVAILABLE')
   const administrationLifecycle=localAdministration
     ? createAdministrationLifecycleDispatcher({database,beforeQuery:localAdministration.verify,dispatch:createOrgmasterLocalAdministrationLifecycleClient(localAdministration).dispatch})
     : productionAdministrationLifecycle(environment)
@@ -487,6 +487,7 @@ export function createOrgmasterAuthRuntime(environment: NodeJS.ProcessEnv = proc
     administrationLocalGuard:localAdministration?.verify,
     pdmRevocationClient: localAdministration ? createOrgmasterPdmRevocationClient({
       local: true,
+      localRuntime:localAdministration,
       tokenProvider: audience => localAdministrationServiceToken(localAdministration, audience),
     }) : undefined,
     financialCatalogHandoffSource:localAdministration?'local_test':undefined,

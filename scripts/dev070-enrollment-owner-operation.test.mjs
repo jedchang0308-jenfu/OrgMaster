@@ -139,7 +139,7 @@ test('owner rejects older prefixes, unapproved appends and altered exact manifes
  ]
  for(const [index,mutateBundle] of cases.entries()){
   const f=sealedOwnerFixture({mutateBundle})
-  await assert.rejects(f.run(),index===2?/MIGRATION_PREFIX_001_031_DRIFT/:[3,8,9].includes(index)?/DEV057_USERS_MIGRATION_APPEND_INVALID/:/DEV070_MIGRATION_APPEND_INVALID/)
+  await assert.rejects(f.run(),index===2?/MIGRATION_PREFIX_001_031_DRIFT/:[3,8,9].includes(index)?/FMS_PROJECTION_FORWARD_ENTRIES_INVALID/:/DEV070_MIGRATION_APPEND_INVALID/)
   assert.equal(f.puts(),0);assert.equal(f.runs(),0)
  }
 })
@@ -242,4 +242,12 @@ test('actual runner rejects unsealed/foreign/source-drifted release evidence bef
   f=>{f.ledger[41].checksum_sha256='0'.repeat(64)},
   f=>{f.identityRow.runtime=true},
  ]){const fixture=sealedJobFixture();mutate(fixture);fixture.refresh();await assert.rejects(fixture.run());assert.equal(fixture.writes(),0)}
+})
+
+test('the reviewed DEV057 query appends retain their own exact identity guard before FMS current',async()=>{
+ for(const index of [68,69]){
+  const f=sealedOwnerFixture({mutateBundle:bundle=>{bundle.entries[index].sourceSha256='0'.repeat(64)}})
+  await assert.rejects(f.run(),/DEV057_USERS_MIGRATION_APPEND_INVALID/)
+  assert.equal(f.puts(),0);assert.equal(f.runs(),0)
+ }
 })

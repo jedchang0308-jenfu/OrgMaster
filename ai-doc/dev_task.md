@@ -1,5 +1,7 @@
 # OrgMaster 開發任務
 
+- 2026-11-25 Platform DEV-015 consumer source candidate：[SSO 拒絕／取消返回及原目的頁恢復](specs/DEV-013-orgmaster-sso-consumer.md#dev015-sso-error-return)。新增[DEV070 FMS 行政投影073 forward](specs/DEV-070-platform-super-admin-authority-contract.md#fms-行政投影-current-function-forward2026-11-25platform-dev-015-candidate)，修正常app-admin已ack卻因050 rename後舊OID而無Portal入口；24真PG＋71focused通過，current71（merge master 的DEV057073/074後）與歷史68／FMS69 generation分開；原620 native073 receipt保留。原登入／首敗證據保留，候選整鏈與CI待主控記錄，未正式發布。
+- 同日來源同步：以 merge `c78adb4` 納入 `origin/master@de4009cb`，保留原候選／失敗紀錄；受影響 SSO HTTP＋AuthApi 補驗 71/71 與型別 PASS，未變的 AuthGate 13 項沿用，詳上列契約。無 rebase／force push／provider／發布。
 
 ## DEV-057：所有使用者與子系統資格清單（2026-11-25）
 

@@ -1,4 +1,5 @@
 import { DEV057_USERS_REMEDIATION, DEV057_USERS_RELEASE_MODE } from './lib/dev057-projed-users-migration.mjs'
+import {FMS_PROJECTION_CURRENT_RELEASE_MODE,FMS_PROJECTION_CURRENT_REMEDIATION} from './lib/dev070-fms-projection-current-migration.mjs'
 import { DEV057_EXTERNAL_REMEDIATION, DEV057_EXTERNAL_RELEASE_MODE } from './lib/dev057-projed-external-migration.mjs'
 import { DEV057_PROJED_CALLER_PINS, dev057PreCallerRuntimeProfile, planDev057CallerEnvironment } from './lib/dev057-projed-caller-profile.mjs'
 import { assertRuntimeConfig } from './lib/dev012-owner-release-runtime.mjs'
@@ -3288,7 +3289,7 @@ test('applied65 abort reuse refuses incomplete, foreign or altered schema and re
 
 test('user directory plans only its own 65/66/67/68/69-to-70 append with unchanged runtime',async()=>{
  for(const count of [65,66,67,68,69]) {
- const h=harness({baselineBundle:prefixBundle(oldBundle.bundle,count),currentBundle:newBundle})
+ const h=harness({baselineBundle:prefixBundle(oldBundle.bundle,count),currentBundle:{...newBundle,bundle:prefixBundle(newBundle.bundle,70)}})
  const common={devId:'DEV-057',slice:'057-PROJED-USERS',remediation:DEV057_USERS_REMEDIATION}
  h.input.values.authorization={...h.input.values.authorization,...common,schemaVersion:'orgmaster.routine-release-authorization.v1',authorizationBasis:'OPERATOR_INVOKED_DEPLOY_PRODUCTION'}
  h.input.values.readiness={...h.input.values.readiness,...common,schemaVersion:'orgmaster.routine-release-readiness.v1'}
@@ -3305,4 +3306,16 @@ test('new user-directory runtime cannot reuse the historical applied65 applicati
  const releaseSourceRevision=spawnSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).stdout.trim()
  const {args}=appliedSchemaAbortHarness({releaseSourceRevision})
  await assert.rejects(buildAbortedAppArtifactReuse(args),/APP_ARTIFACT_REUSE_RUNTIME_INPUT_CHANGED/)
+})
+
+test('FMS projection current plans only its distinct 70-to-71 append with unchanged runtime',async()=>{
+ const h=harness({baselineBundle:prefixBundle(oldBundle.bundle,70),currentBundle:newBundle})
+ const common={devId:'DEV-070',slice:'070-FMS-PROJECTION-CURRENT',remediation:FMS_PROJECTION_CURRENT_REMEDIATION}
+ h.input.values.authorization={...h.input.values.authorization,...common,schemaVersion:'orgmaster.routine-release-authorization.v1',authorizationBasis:'OPERATOR_INVOKED_DEPLOY_PRODUCTION'}
+ h.input.values.readiness={...h.input.values.readiness,...common,schemaVersion:'orgmaster.routine-release-readiness.v1'}
+ attachForwardInfra(h)
+ const plan=await verifyRoutineRelease(h.input)
+ assert.equal(plan.releaseMode,FMS_PROJECTION_CURRENT_RELEASE_MODE);assert.equal(plan.pendingMigrationCount,1)
+ h.input.values.readiness.remediation=DEV057_USERS_REMEDIATION
+ await assert.rejects(verifyRoutineRelease(h.input),/FMS_PROJECTION_FORWARD_AUTHORITY_INVALID/)
 })

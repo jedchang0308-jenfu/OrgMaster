@@ -7,6 +7,7 @@ import {GoogleAuth,Impersonated} from 'google-auth-library'
 import type {OrgmasterDatabase} from './orgmasterDatabase'
 import {createOrgmasterLocalAdministrationRuntime,localAdministrationPeer,localAdministrationProviders,localAdministrationServiceToken} from './orgmasterLocalAdministrationRuntime'
 import {createOrgmasterLocalAdministrationLifecycleClient} from './orgmasterPrincipalLifecycleClient'
+import {createOrgmasterPdmRevocationClient} from './orgmasterPdmRevocationClient'
 import {createLocalFinancialCatalogInitializationOwnerReader} from './financialCatalogInitializationOwnerHttp'
 import {FINANCIAL_ADMINISTRATIVE_DEFINITION_HASH} from '../src/governance/financialCatalog'
 import {performance} from 'node:perf_hooks'
@@ -142,5 +143,75 @@ describe('owner-local administration capability',()=>{
   expect(result).toMatchObject({source:'local_test',operationId,publishReceiptId:'own-publish'})
   expect(fetch.mock.calls[0][0]).toBe('http://localhost:1030/api/administration/catalog-initialization/handoff')
   expect(fetch.mock.calls[0][1]).toMatchObject({redirect:'error',headers:{Authorization:'Bearer isolated.provider.token'}})
+ })
+})
+
+
+function candidateFixture(){
+ const f=fixture(),data=path.join(f.root,'copy','data'),filename=path.join(path.dirname(f.configPath),'candidate.json')
+ mkdirSync(data,{recursive:true});Object.assign(f.config,{format:'jenfu.dev022.local-administration-runtime.v2',audience:'http://localhost:12025'})
+ f.config.target.port=61315;f.config.postmaster.dataDirectory=data;f.row.port=61315;f.input.connectionString=f.input.connectionString.replace('61312','61315')
+ f.snapshot.commandLine=`postgres.exe -D "${data}"`;writeFileSync(path.join(data,'postmaster.pid'),`${f.config.postmaster.pid}\n${data}\nstarted\n61315\n`)
+ const manifest={format:'jenfu.dev022.local-administration-candidate.v1',projectId:'jenfu-platform-nonprod',ownerRoots:{platform:f.root,orgmaster:f.root},origins:{platform:'http://localhost:12015',orgmaster:'http://localhost:12025',fms:'http://localhost:12045'},profileRef:f.config.profileRef,sqlProfileRef:f.config.sqlProfileRef,postmaster:{...f.config.postmaster,port:61315},adcRef:{path:f.adcPath,sha256:digest(readFileSync(f.adcPath))}}
+ const bind=()=>{f.json(filename,manifest);Object.assign(f.config,{candidateRef:{path:filename,sha256:digest(readFileSync(filename))}});f.writeConfig()}
+ bind();Object.assign(f.environment,{GOOGLE_APPLICATION_CREDENTIALS:f.adcPath,google_application_credentials:f.adcPath})
+ return {f,manifest,filename,bind}
+}
+
+describe('source-bound native candidate administration',()=>{
+ it('routes the existing session-revocation relay through the same opaque Platform origin',async()=>{
+  const {f}=candidateFixture(),runtime=f.load()
+  vi.spyOn(GoogleAuth.prototype,'getClient').mockResolvedValue({} as never)
+  const token=vi.spyOn(Impersonated.prototype,'fetchIdToken').mockResolvedValue('isolated.provider.token')
+  const fetch=vi.fn(async()=>Response.json({selected:0,completed:0}));vi.stubGlobal('fetch',fetch)
+  const client=createOrgmasterPdmRevocationClient({local:true,localRuntime:runtime,tokenProvider:audience=>localAdministrationServiceToken(runtime,audience)})
+  await expect(client.reconcileGlobalLogout()).resolves.toBe('ready')
+  expect(fetch.mock.calls[0][0]).toBe('http://localhost:12015/api/internal/pdm-session-revocation/v1/reconcile')
+  expect(token).toHaveBeenCalledWith('http://localhost:12015')
+  expect(()=>createOrgmasterPdmRevocationClient({localRuntime:{} as never,tokenProvider:async()=>''})).toThrow('UNAVAILABLE')
+ })
+ it('dispatches only the manifest Platform endpoint and retains exact receipt matching',async()=>{
+  const {f}=candidateFixture(),runtime=f.load(),claim={eventId:'10000000-0000-4000-8000-000000000001',operationId:'candidate-operation',sourceRevision:'source',snapshotHash:'a'.repeat(64),leaseGeneration:1}
+  vi.spyOn(GoogleAuth.prototype,'getClient').mockResolvedValue({} as never)
+  const token=vi.spyOn(Impersonated.prototype,'fetchIdToken').mockResolvedValue('isolated.provider.token')
+  const receipt={contractVersion:'platform.principal-lifecycle-receipt.v2',...claim,leaseGeneration:undefined,receiptId:'10000000-0000-4000-8000-000000000002',deliveryPrincipalId:'org-executor',executorPrincipalId:'platform-executor',consumerOwner:'platform',principalOnly:true}
+  const fetch=vi.fn(async()=>new Response(JSON.stringify(receipt)));vi.stubGlobal('fetch',fetch)
+  const client=createOrgmasterLocalAdministrationLifecycleClient(runtime),control=()=>({signal:new AbortController().signal,deadlineAt:performance.now()+5000})
+  await expect(client.dispatch(claim,control())).resolves.toMatchObject({eventId:claim.eventId,operationId:claim.operationId})
+  expect(fetch.mock.calls[0][0]).toBe('http://localhost:12015/api/internal/principal-lifecycle/v2')
+  expect(token).toHaveBeenCalledWith('http://localhost:12015')
+  Object.assign(receipt,{operationId:'another-operation'})
+  await expect(client.dispatch(claim,control())).rejects.toMatchObject({code:'receipt_invalid'})
+  expect(fetch.mock.calls.every(([url])=>url==='http://localhost:12015/api/internal/principal-lifecycle/v2')).toBe(true)
+ })
+ it('rejects manifest changes after minting the runtime before dispatch',async()=>{
+  const {f,filename}=candidateFixture(),runtime=f.load(),client=createOrgmasterLocalAdministrationLifecycleClient(runtime)
+  writeFileSync(filename,readFileSync(filename,'utf8')+' ')
+  const fetch=vi.fn();vi.stubGlobal('fetch',fetch)
+  await expect(client.dispatch({eventId:'10000000-0000-4000-8000-000000000001',operationId:'operation',sourceRevision:'source',snapshotHash:'a'.repeat(64),leaseGeneration:1},{signal:new AbortController().signal,deadlineAt:performance.now()+5000})).rejects.toThrow()
+  expect(fetch).not.toHaveBeenCalled()
+ })
+ it('binds candidate service audiences without accepting the legacy or caller-selected targets',async()=>{
+  const {f}=candidateFixture(),runtime=f.load()
+  expect(localAdministrationPeer(runtime).audience).toBe('http://localhost:12025');await runtime.verify()
+  const fetchIdToken=vi.spyOn(Impersonated.prototype,'fetchIdToken').mockResolvedValue('isolated.provider.token');vi.spyOn(GoogleAuth.prototype,'getClient').mockResolvedValue({} as never)
+  await expect(localAdministrationServiceToken(runtime,'http://localhost:12015')).resolves.toBe('isolated.provider.token')
+  await expect(localAdministrationServiceToken(runtime,'http://localhost:12045')).resolves.toBe('isolated.provider.token')
+  await expect(localAdministrationServiceToken(runtime,'http://localhost:1000')).rejects.toThrow('UNAVAILABLE')
+  expect(fetchIdToken.mock.calls.map(args=>args[0])).toEqual(['http://localhost:12015','http://localhost:12045'])
+ })
+ it.each(['origin','target','adc','manifest'] as const)('rejects %s drift before any business operation',async kind=>{
+  const {f,manifest,filename,bind}=candidateFixture()
+  if(kind==='origin')manifest.origins.platform='https://production.example'
+  if(kind==='target')manifest.postmaster.port=61316
+  if(kind==='adc')manifest.adcRef.sha256='f'.repeat(64)
+  bind()
+  if(kind==='manifest')writeFileSync(filename,'changed')
+  expect(f.load).toThrow('UNAVAILABLE')
+  expect(f.query.mock.calls.some(([statement])=>statement==='SELECT business')).toBe(false)
+ })
+ it('keeps production and service-account credentials outside the candidate lane',()=>{
+  const {f}=candidateFixture();f.environment.NODE_ENV='production';expect(f.load).toThrow('UNAVAILABLE')
+  f.environment.NODE_ENV='development';f.json(f.adcPath,{...f.adc,type:'service_account',private_key:'fixture'});expect(f.load).toThrow('UNAVAILABLE')
  })
 })

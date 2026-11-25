@@ -14,6 +14,7 @@ COPY scripts/lib/dev058-role-policy-migration.mjs scripts/lib/dev058-role-policy
 COPY scripts/lib/dev059-fms-authority-migration.mjs scripts/lib/dev059-fms-authority-migration.mjs
 COPY scripts/lib/dev057-projed-external-migration.mjs scripts/lib/dev057-projed-external-migration.mjs
 COPY scripts/lib/dev057-projed-users-migration.mjs scripts/lib/dev057-projed-users-migration.mjs
+COPY scripts/lib/dev070-fms-projection-current-migration.mjs scripts/lib/dev070-fms-projection-current-migration.mjs
 COPY scripts/lib/dev057-projed-principal-migration.mjs scripts/lib/dev057-projed-principal-migration.mjs
 COPY scripts/lib/dev060-fms-catalog-activation-migration.mjs scripts/lib/dev060-fms-catalog-activation-migration.mjs
 COPY scripts/lib/dev070-administration-migration.mjs scripts/lib/dev070-administration-migration.mjs
