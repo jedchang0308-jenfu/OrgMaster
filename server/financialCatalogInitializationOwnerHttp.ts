@@ -3,7 +3,7 @@ import { FINANCIAL_ADMINISTRATIVE_DEFINITION_HASH } from '../src/governance/fina
 import { ApplicationEntitlementError } from './applicationEntitlementCommon'
 import type { FinancialCatalogInitializationOwnerReader } from './financialCatalogInitializationAdoption'
 import type { FmsCatalogReleaseInput } from './financialCatalogReleaseStore'
-import {localAdministrationPeer,localAdministrationServiceToken,type OrgmasterLocalAdministrationRuntime} from './orgmasterLocalAdministrationRuntime'
+import {localAdministrationPeer,localAdministrationServiceToken,localAdministrationOrigins,type OrgmasterLocalAdministrationRuntime} from './orgmasterLocalAdministrationRuntime'
 
 export const FMS_INITIALIZATION_CANONICAL_ORIGIN = 'https://jf-fms-prod-56gnizku7q-de.a.run.app'
 export const FMS_INITIALIZATION_HANDOFF_PATH = '/api/administration/catalog-initialization/handoff'
@@ -67,6 +67,7 @@ export function createDefaultFinancialCatalogInitializationOwnerReader(environme
 /** Local transport is minted only by the owner-file/OS/runtime-DB capability. */
 export function createLocalFinancialCatalogInitializationOwnerReader(runtime:OrgmasterLocalAdministrationRuntime):FinancialCatalogInitializationOwnerReader {
   localAdministrationPeer(runtime)
+  const origin=localAdministrationOrigins(runtime).fms
   const reader=createFinancialCatalogInitializationHttpReader({request:async(url,body)=>{
     if(url!==FMS_INITIALIZATION_CANONICAL_ORIGIN+FMS_INITIALIZATION_HANDOFF_PATH)fail()
     const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),8000)
@@ -74,9 +75,9 @@ export function createLocalFinancialCatalogInitializationOwnerReader(runtime:Org
     const wait=<T>(work:Promise<T>)=>Promise.race([work,deadline])
     try{
       await wait(runtime.verify())
-      const token=await wait(localAdministrationServiceToken(runtime,'http://localhost:1030'))
+      const token=await wait(localAdministrationServiceToken(runtime,origin))
       controller.signal.throwIfAborted()
-      const response=await wait(fetch('http://localhost:1030'+FMS_INITIALIZATION_HANDOFF_PATH,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify(body),signal:controller.signal,redirect:'error',cache:'no-store'}))
+      const response=await wait(fetch(origin+FMS_INITIALIZATION_HANDOFF_PATH,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify(body),signal:controller.signal,redirect:'error',cache:'no-store'}))
       if(!response.ok||!response.headers.get('content-type')?.startsWith('application/json'))fail()
       const reader=response.body?.getReader();if(!reader)fail()
       const chunks:Uint8Array[]=[];let size=0

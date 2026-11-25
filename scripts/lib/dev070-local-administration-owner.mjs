@@ -6,6 +6,7 @@ import {pathToFileURL} from 'node:url'
 import {GoogleAuth,Impersonated,OAuth2Client} from 'google-auth-library'
 import {assertReviewedOrgmasterMigrationEntries} from './dev057-projed-principal-migration.mjs'
 import {unwrapMigrationTransaction} from './dev040-orgmaster-independent-release.mjs'
+import {assertFmsProjectionCurrentEntries} from './dev070-fms-projection-current-migration.mjs'
 export const LOCAL_BRIDGE_PATH='db/migrations/local/046_dev070_local_administration_bridge_v1.sql'
 export const LOCAL_OWNER_BOOTSTRAP_PATH='db/dev-010/071_local_orgmaster_administration_owner_bootstrap_v2.sql'
 export const LOCAL_PERSISTENCE_COMPATIBILITY_PATH='db/dev-010/072_local_orgmaster_persistence_compatibility.sql'
@@ -17,19 +18,26 @@ const canonical=value=>JSON.stringify(value,(_key,v)=>v&&typeof v==='object'&&!A
 export const localOwnerHash=value=>createHash('sha256').update(typeof value==='string'||Buffer.isBuffer(value)?value:canonical(value)).digest('hex')
 const fail=code=>{throw Object.assign(new Error('DEV070_LOCAL_'+code),{code:'DEV070_LOCAL_'+code})}
 export function validateLocalLedger(entries,rows,database){
- assertReviewedOrgmasterMigrationEntries(entries)
+ if(entries?.length===71||entries?.length===69&&entries.at(-1)?.version==='dev070-orgmaster-073')assertFmsProjectionCurrentEntries(entries)
+ else assertReviewedOrgmasterMigrationEntries(entries)
  if(!Array.isArray(rows)||rows.length<39||rows.length>entries.length||new Set(rows.map(r=>r.version)).size!==rows.length)fail('LEDGER_UNKNOWN')
  const byVersion=new Map(rows.map(r=>[r.version,r]))
- for(const entry of entries.slice(0,rows.length)){
+ // A reviewed FMS forward may already precede later DEV057 query-only appends.
+ // Accept only that exact known historical layout; unknown/missing rows still fail.
+ const installed=entries.length===71&&[69,70].includes(rows.length)&&byVersion.has('dev070-orgmaster-073')
+  ?[...entries.slice(0,rows.length-1),entries.at(-1)]:entries.slice(0,rows.length)
+ for(const entry of installed){
   const row=byVersion.get(entry.version),name=entry.path.split('/').at(-1).replace(/^\d{3}_/u,'').replace(/\.sql$/u,'')
   const raw042=entry.version==='dev057-orgmaster-042'&&row?.checksum_sha256===entry.sourceSha256&&/^LOCAL_GENESIS:[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/u.test(row.source_revision)&&database.endsWith('_'+row.source_revision.slice(14,22))
   if(!row||row.name!==name||row.checksum_sha256!==entry.appliedSha256&&!raw042||!raw042&&!/^[a-f0-9]{40}$/u.test(row.source_revision))fail('LEDGER_UNKNOWN')
  }
- return {count:rows.length,raw042:rows.find(r=>r.version==='dev057-orgmaster-042')?.checksum_sha256===entries[39].sourceSha256,pending:entries.slice(rows.length)}
+ return {count:rows.length,raw042:rows.find(r=>r.version==='dev057-orgmaster-042')?.checksum_sha256===entries[39].sourceSha256,pending:entries.filter(entry=>!byVersion.has(entry.version))}
 }
 export async function readLocalOwnerSource(context){
  const root=context.ownerRoot,profile=JSON.parse(await readFile(path.join(root,'config/release/dev040-orgmaster-independent-production-v3.json'),'utf8'))
  assertReviewedOrgmasterMigrationEntries(profile.migrations.entries)
+ // Current local status/bootstrap knows the separate FMS 073 forward without
+ // relabelling the immutable reviewed DEV057 release generations.
  const entries=profile.migrations.entries
  const migrations=[]
  for(const entry of entries.slice(39)){
@@ -45,7 +53,7 @@ export async function readLocalOwnerSource(context){
  const git=args=>execFileSync('git',args,{cwd:root,encoding:'utf8',windowsHide:true,maxBuffer:8*1024*1024})
  const sourceRevision=git(['rev-parse','HEAD']).trim(),dirty=git(['diff','--binary','HEAD'])
  if(!/^[a-f0-9]{40}$/u.test(sourceRevision))fail('SOURCE_MISMATCH')
- const ownPaths=['scripts/dev070-local-administration-owner.mjs','scripts/lib/dev070-local-administration-owner.mjs','server/orgmasterLocalAdministrationRuntime.ts',LOCAL_BRIDGE_PATH,LOCAL_OWNER_BOOTSTRAP_PATH,LOCAL_PERSISTENCE_COMPATIBILITY_PATH]
+ const ownPaths=['scripts/dev070-local-administration-owner.mjs','scripts/lib/dev070-local-administration-owner.mjs','server/orgmasterLocalAdministrationRuntime.ts','scripts/lib/dev070-fms-projection-current-migration.mjs',LOCAL_BRIDGE_PATH,LOCAL_OWNER_BOOTSTRAP_PATH,LOCAL_PERSISTENCE_COMPATIBILITY_PATH]
  const inputs=await Promise.all(ownPaths.map(async p=>[p,localOwnerHash(await readFile(path.join(root,p)))]))
  const neutralPaths=['scripts/lib/dev021-local-postgres-cluster.mjs','scripts/lib/dev-local-process-ownership.mjs']
  const neutral=await Promise.all(neutralPaths.map(async p=>{const filename=path.join(context.platformRoot,p);if((await lstat(filename)).isSymbolicLink()||await realpath(filename)!==filename)fail('NEUTRAL_SOURCE_INVALID');return [p,localOwnerHash(await readFile(filename))]}))

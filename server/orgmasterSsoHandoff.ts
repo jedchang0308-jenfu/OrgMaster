@@ -99,7 +99,8 @@ async function brokerFailure(response: Response) {
 
 function cookieValue(header: string | undefined, secure: boolean) {
   const name = transactionCookieName(secure)
-  const item = header?.split(';').map((value) => value.trim()).find((value) => value.startsWith(`${name}=`))
+  const items = header?.split(';').map((value) => value.trim()).filter((value) => value.startsWith(`${name}=`)) ?? []
+  const item = items.length === 1 ? items[0] : null
   if (!item) return null
   try { return decodeURIComponent(item.slice(name.length + 1)) } catch { return null }
 }
@@ -136,6 +137,18 @@ function decodeTx(value: string | null, secret: string, now: number): { tx: Tx; 
 }
 
 function clearCookie(secure: boolean) { return `${transactionCookieName(secure)}=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}` }
+function returnToLogin(response: ServerResponse, origin: string, returnTo: string, code: string, id: string, secure: boolean) {
+  const target = new URL('/login', origin)
+  target.searchParams.set('auth_error', code)
+  target.searchParams.set('returnTo', returnTo)
+  response.statusCode = 303
+  response.setHeader('Location', target.toString())
+  response.setHeader('Cache-Control', 'no-store')
+  response.setHeader('Referrer-Policy', 'no-referrer')
+  response.setHeader('X-Correlation-Id', id)
+  response.setHeader('Set-Cookie', clearCookie(secure))
+  response.end()
+}
 function transactionCookie(value: string, secure: boolean, maxAge = SSO_TRANSACTION_TTL_SECONDS) { return `${transactionCookieName(secure)}=${encodeURIComponent(value)}; Max-Age=${maxAge}; Path=/; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}` }
 
 function restartTransaction(response: ServerResponse, publicOrigin: string, returnTo: string, id: string, secure: boolean) {
@@ -270,25 +283,33 @@ export async function handleOrgmasterSsoRequest(request: IncomingMessage, respon
   const decoded = decodeTx(rawTransaction, setup.config.sessionHashPepper, now())
   const state = url.searchParams.get('state')
   const code = url.searchParams.get('code')
+  const refusal = url.searchParams.get('error')
   const issuer = url.searchParams.get('iss')
-  const exactCallback = [...url.searchParams.keys()].every((key) => ['code', 'state', 'iss'].includes(key))
-    && ['code', 'state', 'iss'].every((key) => url.searchParams.getAll(key).length === 1)
-    && !!state && /^[A-Za-z0-9_-]{22,256}$/u.test(state) && !!code && code.length <= 4096 && issuer === setup.issuer
+  const callbackKeys = url.searchParams.has('error') ? ['error', 'state', 'iss'] : ['code', 'state', 'iss']
+  const exactCallback = [...url.searchParams.keys()].every((key) => callbackKeys.includes(key))
+    && callbackKeys.every((key) => url.searchParams.getAll(key).length === 1)
+    && !!state && /^[A-Za-z0-9_-]{22,256}$/u.test(state) && issuer === setup.issuer
+    && (refusal !== null ? ['access_denied', 'temporarily_unavailable'].includes(refusal) : !!code && code.length <= 4096)
   if (!exactCallback) { error(response, 400, 'sso_request_invalid', id, [clearCookie(setup.config.secureCookie)]); return true }
   if (!decoded) {
-    if (transactionCookiePresent(request.headers.cookie, setup.config.secureCookie)) { error(response, 400, 'sso_request_invalid', id, [clearCookie(setup.config.secureCookie)]); return true }
+    if (refusal !== null || transactionCookiePresent(request.headers.cookie, setup.config.secureCookie)) { error(response, 400, 'sso_request_invalid', id, [clearCookie(setup.config.secureCookie)]); return true }
     restartTransaction(response, setup.config.publicBaseUrl.origin, '/', id, setup.config.secureCookie)
     return true
   }
   const { tx, expired } = decoded
   if (state !== tx.state || issuer !== tx.issuer) { error(response, 400, 'sso_request_invalid', id, [clearCookie(setup.config.secureCookie)]); return true }
   if (expired) {
+    if (refusal !== null) { error(response, 400, 'sso_request_invalid', id, [clearCookie(setup.config.secureCookie)]); return true }
     restartTransaction(response, setup.config.publicBaseUrl.origin, tx.returnTo, id, setup.config.secureCookie)
+    return true
+  }
+  if (refusal !== null) {
+    returnToLogin(response, setup.config.publicBaseUrl.origin, tx.returnTo, refusal === 'access_denied' ? 'sso_access_denied' : 'sso_dependency_unavailable', id, setup.config.secureCookie)
     return true
   }
   try {
     const token = await getServiceToken(setup.brokerOrigin)
-    const body = new URLSearchParams({ grant_type: 'authorization_code', code, client_id: 'orgmaster', redirect_uri: `${setup.config.publicBaseUrl.origin}/api/auth/jenfu-sso/callback`, code_verifier: tx.verifier })
+    const body = new URLSearchParams({ grant_type: 'authorization_code', code: code!, client_id: 'orgmaster', redirect_uri: `${setup.config.publicBaseUrl.origin}/api/auth/jenfu-sso/callback`, code_verifier: tx.verifier })
     const brokerResponse = await fetchImpl(`${setup.brokerOrigin}/api/sso/token`, { method: 'POST', redirect: 'error', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Jenfu-Service-Identity': `Bearer ${token}` }, body })
     if (!brokerResponse.ok) await brokerFailure(brokerResponse)
     const handoff = parseHandoff(await brokerResponse.json(), setup.issuer, now())
@@ -315,6 +336,10 @@ export async function handleOrgmasterSsoRequest(request: IncomingMessage, respon
     response.end()
   } catch (errorValue) {
     const failure = callbackFailure(errorValue)
+    if (failure.status >= 500) {
+      returnToLogin(response, setup.config.publicBaseUrl.origin, tx.returnTo, 'sso_dependency_unavailable', id, setup.config.secureCookie)
+      return true
+    }
     error(response, failure.status, failure.code, id, [clearCookie(setup.config.secureCookie)])
   }
   return true

@@ -10,6 +10,7 @@ import {unwrapMigrationTransaction} from './lib/dev040-orgmaster-independent-rel
 import {verifyAiPdmCatalogReaderCompatibility} from './lib/dev070-ai-pdm-catalog-reader-postgres-qc.mjs'
 import {verifyLocalOwnerBootstrapAcl,verifyLocalPersistenceCompatibility} from './lib/dev070-local-owner-bootstrap-postgres-qc.mjs'
 import {verifyPdmManagerEligibility,verifyPdmManagerWithScopedReaders} from './lib/dev070-pdm-manager-postgres-qc.mjs'
+import {verifyFmsProjectionCurrent} from './lib/dev070-fms-projection-current-postgres-qc.mjs'
 
 // This component installs actual Org source fragments and all of local 046.
 // FMS contract objects below are explicit ABI stubs, not a cross-owner proof.
@@ -171,6 +172,9 @@ try{
  const managerAdmin=await connect(undefined,managerDatabase),managerOwner=await connect('jenfu_orgmaster_migrator',managerDatabase)
  process.stdout.write(JSON.stringify(await verifyPdmManagerWithScopedReaders({
   admin:managerAdmin,owner:managerOwner,root,database:managerDatabase}))+'\n')
+ const projectionDatabase=database+'_073'
+ await createDatabase(projectionDatabase)
+ process.stdout.write(JSON.stringify(await verifyFmsProjectionCurrent({admin:await connect(undefined,projectionDatabase),root}))+'\n')
 }catch(error){
  process.stderr.write(JSON.stringify({scope:'DEV070_POSTGRES_COMPONENT_FIRST_FAILURE',code:typeof error.code==='string'?error.code:'ASSERTION',message:error.message})+'\n')
  throw error

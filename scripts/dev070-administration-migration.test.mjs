@@ -1,3 +1,4 @@
+import './lib/dev070-fms-projection-current-migration.test.mjs'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {readFileSync} from 'node:fs'
