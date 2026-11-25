@@ -4,7 +4,70 @@ import { once } from 'node:events'
 import { createProjedUsersService, parseProjedUserCommand } from './orgmasterProjedUsers'
 import { createProjedExternalMiddleware, PROJED_USERS_MANAGEMENT_PATH } from './orgmasterProjedExternalApi'
 import { setVerifiedRequestIdentity } from './orgmasterRequestIdentity'
+import { createOrgmasterAuthRuntime } from './orgmasterAuthApi'
+import * as databases from './orgmasterDatabase'
+import { requireOrgmasterLocalSandboxDatabase, withOrgmasterLocalSandboxPersistenceTarget } from './orgmasterPersistenceRepository'
 const command = { commandId: '11111111-1111-4111-8111-111111111111', googleSubject: 'verified-subject', expectedRevision: '2:7', action: 'disable' }
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs() })
+
+describe('ProJED users in verified local sandbox request scope', () => {
+  const actor = { principalId: 'trusted-principal', sessionId: 'trusted-session', principalAuthEpoch: 4, authenticatedAt: new Date().toISOString(), assuranceLevel: 'aal1' } as never
+  const localUrl = 'postgres://sandbox_runtime:synthetic@127.0.0.1:53761/jenfu_local_orgmaster_test'
+  const environment = { NODE_ENV: 'development', JENFU_LOCAL_SANDBOX_ENABLED: '1' }
+
+  it('includes the sandbox service but rejects requests outside verified scope without consulting formal or environment databases', async () => {
+    vi.stubEnv('ORGMASTER_POSTGRES_URL', 'postgres://unused.invalid/formal')
+    const formal = vi.spyOn(databases, 'createOrgmasterDatabase')
+    const local = vi.spyOn(databases, 'createOrgmasterLocalSandboxDatabase')
+    const runtime = createOrgmasterAuthRuntime(environment)
+    try {
+      expect(runtime.localSandbox?.enabledCandidate).toBe(true)
+      expect(runtime.projedUsers).toBeDefined()
+      expect(runtime.sessions).toBeUndefined()
+      expect(() => requireOrgmasterLocalSandboxDatabase()).toThrow('PERSISTENCE_NOT_CONFIGURED')
+      await expect(runtime.projedUsers!.manage(actor)).rejects.toMatchObject({ status: 503, code: 'PROJED_USER_DIRECTORY_UNAVAILABLE' })
+      expect(formal).not.toHaveBeenCalled()
+      expect(local).not.toHaveBeenCalled()
+    } finally { await runtime.localSandbox?.close() }
+  })
+
+  it('resolves the verified local target for each request and uses the same identity-bound management SQL', async () => {
+    vi.stubEnv('ORGMASTER_POSTGRES_URL', '')
+    vi.stubEnv('ORGMASTER_PERSISTENCE_MODE', '')
+    const value = { contractVersion: 'orgmaster.projed-users.v1', users: [] }
+    const query = vi.fn().mockResolvedValue({ rows: [{ result: value }] })
+    const local = vi.spyOn(databases, 'createOrgmasterLocalSandboxDatabase').mockReturnValue({ query, end: vi.fn() })
+    const formal = vi.spyOn(databases, 'createOrgmasterDatabase')
+    const runtime = createOrgmasterAuthRuntime(environment)
+    try {
+      expect(await withOrgmasterLocalSandboxPersistenceTarget(localUrl, () => runtime.projedUsers!.manage(actor, command))).toEqual(value)
+      const secondUrl = localUrl.replace('53761', '53762')
+      expect(await withOrgmasterLocalSandboxPersistenceTarget(secondUrl, () => runtime.projedUsers!.manage(actor))).toEqual(value)
+      expect(local.mock.calls.map(args => args[0])).toEqual([localUrl, secondUrl])
+      expect(formal).not.toHaveBeenCalled()
+      expect(query.mock.calls.map(args => args[0])).toEqual(Array(2).fill('SELECT orgmaster_core.manage_projed_user_v1($1::jsonb,$2::jsonb) AS result'))
+      expect(JSON.parse(query.mock.calls[0][1][0])).toMatchObject({ kind: 'principal', principalId: 'trusted-principal', sessionId: 'trusted-session', principalAuthEpoch: 4, assuranceLevel: 'aal1' })
+      expect(JSON.parse(query.mock.calls[0][1][1])).toEqual(command)
+      expect(query.mock.calls[1][1][1]).toBeNull()
+      await expect(runtime.projedUsers!.manage(actor)).rejects.toMatchObject({ status: 503 })
+      expect(query).toHaveBeenCalledTimes(2)
+    } finally { await runtime.localSandbox?.close() }
+  })
+
+  it('preserves the same SQL administrator denial inside a verified local scope', async () => {
+    vi.stubEnv('ORGMASTER_POSTGRES_URL', '')
+    vi.stubEnv('ORGMASTER_PERSISTENCE_MODE', '')
+    const query = vi.fn().mockRejectedValue(new Error('PROJED_USER_ADMIN_REQUIRED'))
+    vi.spyOn(databases, 'createOrgmasterLocalSandboxDatabase').mockReturnValue({ query, end: vi.fn() })
+    const runtime = createOrgmasterAuthRuntime(environment)
+    try {
+      await expect(withOrgmasterLocalSandboxPersistenceTarget(localUrl, () => runtime.projedUsers!.manage(actor, command)))
+        .rejects.toMatchObject({ status: 403, code: 'PROJED_USER_ADMIN_REQUIRED' })
+      expect(query).toHaveBeenCalledOnce()
+    } finally { await runtime.localSandbox?.close() }
+  })
+})
+
 describe('ProJED account directory owner boundary', () => {
   it('requires an exact identity-bound CAS command, never an email or actor supplied by the browser', () => {
     expect(parseProjedUserCommand(command)).toEqual(command)

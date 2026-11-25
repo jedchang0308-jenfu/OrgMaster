@@ -7,6 +7,7 @@
 本切片沿 ORGMASTER/DEV-057，對應 ProJED/DEV-139。治理中心新增「ProJED 使用者」；搜尋 Email／名稱／Principal、篩選個人／外部與啟用狀態，顯示登入資格、最小身分登錄狀態與外部協作資格。既有已遷移、尚未在新平台首登的帳號也須可見、可停用；未綁定的待審邀請仍在原外部資格頁，不視為已存在的帳號。
 
 - 維持現有註冊方式；本清單不新增管理員核准註冊條件。Google subject 是精確帳號鍵，Email 僅查詢顯示。個人身分與外部資格分開，登入資格不等於可存取公司／他人看板。
+- 本機候選沿既有 sandbox 正常登入；新管理服務只從 middleware 已驗證的 request-scoped DB 取得連線，無 scope 直接拒絕，無正式連線 fallback。ProJED 帳號管理不依賴主組織文件的編輯／唯讀狀態；治理權限、手機唯讀及未確認命令限制仍保留。
 - `GET/POST /api/orgmaster/projed-users/v1` 使用 verified OrgMaster Session；讀取與操作均限現行 exact-Principal OrgMaster app-admin direct grant。沿現有手機唯讀政策，不用 Employee／電子郵件推導管理權，無額外 IAM 或 provider API。
 - 只讀 ProJED 提供的 versioned contract metadata，回傳帳號 ID、Google subject、Principal、Email、顯示名稱、啟用狀態、版本與資格狀態；不含 workspace／board／task ID、名稱或內容。公司管理員不因此取得私人內容。主站／Quick 的帳號、PWA、本機草稿和既有資料不改。
 - 停用只影響 ProJED：原子更新其 account guard 並前進 revision，主站／Quick 舊 Session 立即失效；不刪資料、不全域停用其他 App。恢復前進新 revision，須重新登入；不復活舊 Session 或已停用／撤回的外部邀請。Employee／上游身分本身失效時，仍顯示不具登入資格。

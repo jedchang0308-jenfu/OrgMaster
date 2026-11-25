@@ -50,7 +50,44 @@ beforeEach(() => {
   vi.clearAllMocks()
   Object.defineProperty(window, 'matchMedia', { configurable: true, value: () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }) })
 })
-afterEach(() => { for (const { root, host } of mounted.splice(0)) { act(() => root.unmount()); host.remove() } })
+afterEach(() => { for (const { root, host } of mounted.splice(0)) { act(() => root.unmount()); host.remove() } vi.unstubAllGlobals() })
+
+describe('ProJED users management in a read-only organization workspace', () => {
+  async function renderUsers(manage = true, mobile = false) {
+    const snapshot = fixture()
+    mocks.loadGovernance.mockResolvedValue({ payload: snapshot, revision: snapshot.revision })
+    mocks.allows.mockImplementation((permission: string) => manage && permission === 'orgmaster.governance.manage')
+    Object.defineProperty(window, 'matchMedia', { configurable: true, value: () => ({ matches: mobile, addEventListener: vi.fn(), removeEventListener: vi.fn() }) })
+    const user = { googleSubject: 'fixture-google-subject', accountId: 'fixture-account', principalId: 'fixture-principal', email: 'fixture@example.invalid', displayName: '測試使用者', kind: 'personal', enabled: true, revision: '3:7', identityStatus: 'ACTIVE', loginEligible: true, externalStatus: 'NONE' }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ contractVersion: 'orgmaster.projed-users.v1', users: [user, { ...user, googleSubject: 'fixture-disabled-subject', enabled: false, loginEligible: false }] })))
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    mounted.push({ host, root })
+    await act(async () => { root.render(<GovernanceCenter employees={[]} departments={[]} roles={[]} currentOrganizationVersionId="organization-current" workspaceMutationAllowed={false} initialSection="projed-users" />) })
+    return host
+  }
+
+  it('keeps ProJED account disable and restore available to a governance manager while the organization is read-only', async () => {
+    const host = await renderUsers()
+    expect([...host.querySelectorAll('tbody button')].map(button => button.textContent)).toEqual(['停用', '恢復'])
+    expect([...host.querySelectorAll<HTMLButtonElement>('tbody button')].every(button => !button.disabled)).toBe(true)
+    expect(mocks.allows).toHaveBeenCalledWith('orgmaster.governance.manage')
+  })
+
+  it('keeps account metadata read-only without governance manage permission', async () => {
+    const host = await renderUsers(false)
+    expect(host.querySelectorAll('tbody tr')).toHaveLength(2)
+    expect(host.querySelectorAll('tbody button')).toHaveLength(0)
+  })
+
+  it('keeps the mobile account directory read-only even with governance manage permission', async () => {
+    const host = await renderUsers(true, true)
+    expect(host.textContent).toContain('手機僅供閱讀')
+    expect(host.querySelectorAll('tbody tr')).toHaveLength(2)
+    expect(host.querySelectorAll('tbody button')).toHaveLength(0)
+  })
+})
 
 describe('governance version presentation', () => {
   it('shows a catalog-only update as a pending change instead of zero assignment changes', async () => {

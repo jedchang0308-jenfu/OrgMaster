@@ -3,6 +3,8 @@
 
 ## DEV-057：ProJED 使用者清單（2026-11-25）
 
+- 本機候選補齊：正常 sandbox 登入後的新 API 接 verified request-scoped DB，無 scope 拒絕；組織文件唯讀不再誤擋 ProJED 帳號管理。34 項服務／Auth、12 項治理容器自查通過；獨立候選已走真登入、清單與畫面停用／恢復，僅三筆合成帳號，正式與既有1010未改。候選的登入與 OrgMaster runtime 保留供人類確認；確認結束後由本任務清理。
+
 - 狀態：來源實作／隔離自查完成，正式未部署。治理中心清單包含既有未首登帳號、個人及已綁定外部帳號，可查資格並停用／恢復；不讀私人內容，不改註冊方式。
 - 對應 ProJED/DEV-139 metadata contract 0052；OrgMaster forward-only 070，正常來源發布接線保留 65→66 exact append 與既有 required CI。驗證及操作邊界見[本切片契約](specs/DEV-057-identity-and-grant-contract-boundary.md#projed-user-directory)。
 - RD 自查：應用與 API focused 51 PASS、隔離跨 owner PostgreSQL 9 組 PASS（含有效非 admin 拒絕）、桌面與390px真元件／合成API操作 PASS、型別與前後端 build PASS。來源 CI 結果另依 PR；不將本機證據計為正式使用者驗收。

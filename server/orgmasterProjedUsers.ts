@@ -19,13 +19,14 @@ const errors: Record<string, number> = {
   PROJED_USER_CONFLICT: 409, PROJED_USER_REQUEST_INVALID: 400, PROJED_USER_NOT_FOUND: 404,
   PROJED_USER_ADMIN_REQUIRED: 403, IDENTITY_CONTEXT_REQUIRED: 401,
 }
-export function createProjedUsersService(database: Pick<OrgmasterDatabase, 'query'>, beforeQuery?: () => Promise<void>) {
+export function createProjedUsersService(database: Pick<OrgmasterDatabase, 'query'> | (() => Pick<OrgmasterDatabase, 'query'>), beforeQuery?: () => Promise<void>) {
   return {
     async manage(actor: GovernanceActorContext, value?: unknown) {
       const command = value === undefined ? null : parseProjedUserCommand(value)
       try {
         await beforeQuery?.()
-        const result = await database.query('SELECT orgmaster_core.manage_projed_user_v1($1::jsonb,$2::jsonb) AS result', [
+        const target = typeof database === 'function' ? database() : database
+        const result = await target.query('SELECT orgmaster_core.manage_projed_user_v1($1::jsonb,$2::jsonb) AS result', [
           JSON.stringify({ ...persistenceActorContext(actor), principalId: actor.principalId }), command ? JSON.stringify(command) : null,
         ])
         if (result.rows.length !== 1 || !result.rows[0].result) throw new Error('result_missing')

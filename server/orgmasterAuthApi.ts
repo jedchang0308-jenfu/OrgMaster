@@ -25,7 +25,7 @@ import {
 } from './orgmasterGovernanceIdentity'
 import { createPrincipalAdmissionRepository, PrincipalAdmissionError, type PrincipalAdmissionRepository } from './orgmasterPrincipalAdmissionRepository'
 import { readVerifiedRequestIdentity, setVerifiedRequestIdentity } from './orgmasterRequestIdentity'
-import { withOrgmasterLocalSandboxPersistenceTarget, withPersistenceActor } from './orgmasterPersistenceRepository'
+import { requireOrgmasterLocalSandboxDatabase, withOrgmasterLocalSandboxPersistenceTarget, withPersistenceActor } from './orgmasterPersistenceRepository'
 import { createOrgmasterSessionRepository, type OrgmasterSession, type OrgmasterSessionRepository } from './orgmasterSessionRepository'
 import { createManagedIdentityService, type ManagedIdentityServiceV1 } from './orgmasterManagedIdentityService'
 import { createManagedIdentityRepository } from './orgmasterManagedIdentityRepository'
@@ -419,6 +419,7 @@ export function createOrgmasterAuthRuntime(environment: NodeJS.ProcessEnv = proc
     return {
       configResult: { configured: false, missing: [], reason: 'Local principal sandbox runtime is active.' },
       localSandbox: createOrgmasterLocalPrincipalSandbox({ environment }),
+      projedUsers: createProjedUsersService(requireOrgmasterLocalSandboxDatabase),
     }
   }
   const configResult = readOrgmasterAuthConfig(environment)
