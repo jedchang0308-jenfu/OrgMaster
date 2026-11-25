@@ -49,6 +49,15 @@ await withAdministrationPostgresFixture(async fixture => {
  const get = async () => (await manage()).users.find(r=>r.googleSubject===subject)
  let firstDisableCommand
  const command = (row,action) => ({commandId:randomUUID(),googleSubject:row.googleSubject,expectedRevision:row.revision,action})
+ await check('optimized-directory-preserves-real-legacy-membership-and-admin-boundaries',async()=>{
+  const read=async()=> (await runtime.query('SELECT orgmaster_core.read_user_directory_v1($1::jsonb) result',[JSON.stringify(actor)])).rows[0].result;
+  const t=performance.now(), before=await read(), oldMs=performance.now()-t;
+  await admin.query(await readFile('db/migrations/072_dev057_user_directory_optimized_grants.sql','utf8'));
+  const n=performance.now(), after=await read(), newMs=performance.now()-n;
+  assert.deepEqual(after,before);
+  await assert.rejects(runtime.query('SELECT orgmaster_core.read_user_directory_v1($1::jsonb)',[JSON.stringify({...nonAdmin.actor,principalId:nonAdmin.principalId})]),/USER_DIRECTORY_ADMIN_REQUIRED/);
+  console.log(JSON.stringify({comparison:'same-isolated-actor-data',oldMs:Math.round(oldMs),newMs:Math.round(newMs),users:after.users.length}));
+ });
  await check('legacy-account-visible-before-first-platform-enrollment-without-private-content', async () => {
   for(const entry of ['main','quick'])assert.equal(await actorValid(entry,'1'),true);
   const row=await get();assert.equal(row.identityStatus,'UNREGISTERED');assert.equal(row.enabled,true);assert.equal(row.email,'legacy-personal@example.invalid')
