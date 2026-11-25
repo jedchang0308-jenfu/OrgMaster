@@ -50,6 +50,8 @@ describe('keyless Google Directory domain-wide delegation', () => {
     try {
       writeFileSync(filename, JSON.stringify(adc))
       expect(readGoogleDirectoryRuntimeConfig(environment)).toMatchObject({ enabled: true })
+      expect(readGoogleDirectoryRuntimeConfig({ ...environment, google_application_credentials: filename })).toMatchObject({ enabled: true })
+      expect(readGoogleDirectoryRuntimeConfig({ ...environment, google_application_credentials: 'different-file' })).toEqual({ enabled: false, state: 'invalid' })
       for (const rejected of [{ NODE_ENV: 'production' }, { K_SERVICE: 'cloud' }, { DEV058_FIREBASE_USER_ADC_PROJECT: 'jenfu-platform-prod' }, { JENFU_FIREBASE_PROJECT_ID: 'jenfu-platform-prod' }]) {
         expect(readGoogleDirectoryRuntimeConfig({ ...environment, ...rejected })).toEqual({ enabled: false, state: 'invalid' })
       }

@@ -143,7 +143,9 @@ function isNonproductionUserAdc(environment: NodeJS.ProcessEnv, filename: string
 export function readGoogleDirectoryRuntimeConfig(environment: NodeJS.ProcessEnv): GoogleDirectoryRuntimeConfig {
   if (environment.ORGMASTER_MANAGED_IDENTITY_ENABLED !== 'true') return { enabled: false, state: 'disabled' }
   const explicitAdc = environment.GOOGLE_APPLICATION_CREDENTIALS?.trim()
-  if (environment.google_application_credentials?.trim() || explicitAdc && !isNonproductionUserAdc(environment, explicitAdc)) return { enabled: false, state: 'invalid' }
+  const alias = environment.google_application_credentials?.trim()
+  // Windows process.env resolves either casing to the same canonical variable.
+  if (alias && alias !== explicitAdc || explicitAdc && !isNonproductionUserAdc(environment, explicitAdc)) return { enabled: false, state: 'invalid' }
   const customerId = environment.ORGMASTER_GOOGLE_DIRECTORY_CUSTOMER_ID?.trim() ?? ''
   const domain = normalizedDomain(environment.ORGMASTER_GOOGLE_DIRECTORY_DOMAIN ?? '')
   const delegatedSubject = normalizedEmail(environment.ORGMASTER_GOOGLE_DIRECTORY_DELEGATED_SUBJECT ?? '')
