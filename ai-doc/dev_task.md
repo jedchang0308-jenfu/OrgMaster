@@ -1,5 +1,14 @@
 # OrgMaster 開發任務
 
+<a id="dev-071-duty-chapter-mind-map"></a>
+
+## DEV-071：部門職掌與管理辦法心智圖
+
+- **分類／目標**　OrgMaster 產品交付點。在既有職掌工作台，以單張可篩選心智圖查閱部門職掌、管理辦法對應、成長飛輪及主管按需發起的 AI 盤點。
+- **有效契約**　[開發規格](specs/DEV-071-duty-chapter-mind-map.md) 保存首版範圍、資料與權限、API、四個工作切片及原 A01～A26 驗收。附錄保留六部門、33 大項、116 細項與已確認選擇。
+- **現況與證據**　開發中，尚未完成產品驗收。已保留六部門、33 大項、116 細項與 A01～A26 分母，文件與直接連結已核對。隔離分支 `codex/dev071-duty-chapter-mind-map` 已實作首批草稿、唯讀心智圖、五條飛輪、辦法雙向查閱及按需 AI。新增業務 action 與 frozen 15 項 admin／前端 V1 分離，source seed checker 已恢復通過；82 項後端／權限 focused、真實隔離 PostgreSQL v3 writer/fence 兩情境通過，發布前、department scope、撤權、偽造 admin grant 與錯誤 epoch 均拒絕，admin definition/hash 不變。原應用首輪 1697 PASS／7 skip／2 個新反查失敗，修正後 focused 6 項通過；sandbox 64 項通過。新增資料／UI focused 43 項與正常工作台 11 組操作通過，涵蓋完整基準、專項與共通辦法、付款跨部門反查、規劃標記、無效模型引用及無業務寫入。已修正無變更保存造成 revision 漂移，以及改名後 seed 重試。窄畫面清除篩選後的空白視野已修正並通過元件視覺檢查，仍須正常工作台重驗。第一輪來源契約 531 PASS／1 skip，後續 bootstrap drift 已修正，完整 required CI 尚待。最新本機證據位於工作樹 `output/dev071/`，均為 RD 合成資料自查；未使用真實模型評估品質，無正式發布或正式資料寫入。
+- **下一步**　同步已讀回的 `origin/master@061052f` 後完成相容整合、正常工作台窄畫面與原 A01～A26 的證據核對，續行完整 required CI。單部門限閱與現有整份版本權限之間的產品邊界已向使用者提出選擇，待回覆後處理 A05／A14 的限閱變體，不自行擴張登入或工作區資料權限。真實公司辦法核對及真實模型品質與本機示例分開記錄。
+- **關聯契約**　DEV-020 組織版本、DEV-032 管理辦法、DEV-039 工作台。ProJED 幾何與 Platform 章目為重用來源。後續編輯版與人員分配不納入首版。
 
 ## DEV-057：所有使用者與子系統資格清單（2026-11-25）
 

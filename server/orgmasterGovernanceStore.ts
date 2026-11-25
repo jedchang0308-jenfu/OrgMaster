@@ -243,6 +243,8 @@ function governanceCatalogsWithHistory(document: GovernanceDocumentV3, catalogs:
   } : undefined, { preferCurrentApplications }))
 }
 export function syncOrgMasterSystemCatalog(document: GovernanceDocumentV3, now = new Date().toISOString()) {
+  // Only the frozen administration baseline is synchronized. Business actions
+  // are registered through applyDraftCommand; reads never grant them to admin.
   const permissions = [...document.draft.permissions]
   const rolePermissionGrants = [...document.draft.rolePermissionGrants]
   const adminRole = document.draft.applicationRoles.find((role) => role.id === 'role-orgmaster-admin')

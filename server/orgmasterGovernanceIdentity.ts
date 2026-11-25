@@ -34,12 +34,13 @@ const MANAGEMENT_METHOD_PERMISSIONS = [
 export const DEVELOPMENT_AUTH_PROFILES: readonly DevelopmentAuthProfile[] = [
   {
     id: 'administrator', roleCode: 'orgmaster_admin', roleName: 'OrgMaster 管理者',
-    employeeId: 'employee-shijie', employeeName: '張仕杰', description: '全部治理與管理辦法權限',
+    employeeId: 'employee-shijie', employeeName: '張仕杰', description: '全部治理、管理辦法與職掌盤點權限',
     subject: DEV_SUBJECT, principalId: DEV_PRINCIPAL_ID, bootstrap: true,
     permissionCodes: [
       'orgmaster.governance.manage', 'orgmaster.governance.publish', 'orgmaster.governance.simulate',
       'orgmaster.identity.view', 'orgmaster.identity.refresh', 'orgmaster.employee-number.manage', 'orgmaster.identity.invite', 'orgmaster.identity.link', 'orgmaster.identity.invitation.manage',
       ...MANAGEMENT_METHOD_PERMISSIONS,
+      'orgmaster.duty_map.review',
     ],
   },
   {

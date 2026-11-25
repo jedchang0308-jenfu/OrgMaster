@@ -12,7 +12,8 @@ export interface WorkspaceModuleContextMap {
   duties: {
     dutyId: string | null
     lane: DutyConfigurationExactLane | null
-    view: 'configuration' | DutyPlanningView
+    view: 'configuration' | 'map' | DutyPlanningView
+    mapState?: import('../dutyMap').DutyMapViewState
     query: string
     statusFilters: DutyPlanningStatusFilter[]
     focusPositionId: string | null

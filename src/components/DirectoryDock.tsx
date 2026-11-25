@@ -105,6 +105,7 @@ interface DirectoryDockProps {
   onOpenDutyConfigurationDetail?: (dutyId: string) => void
   onCreateDuty?: () => void
   onOpenDutyPlanning?: () => void
+  onOpenDutyMap?: () => void
   workspaceEntityDragSource?: WorkspaceModuleId
   initialQuery?: string
   onQueryChange?: (query: string) => void
@@ -167,6 +168,7 @@ export function DirectoryDock({
   onOpenDutyConfigurationDetail,
   onCreateDuty,
   onOpenDutyPlanning,
+  onOpenDutyMap,
   workspaceEntityDragSource,
   initialQuery = '',
   onQueryChange,
@@ -864,7 +866,7 @@ export function DirectoryDock({
           onQueryChange={(query) => { setDutyQuery(query); onQueryChange?.(query) }}
           onCollapse={() => onActiveDirectoryChange(null)}
           onContextMenu={(event) => openContextMenuFromEvent('duties', undefined, event)}
-          headerAction={onOpenDutyPlanning ? <button type="button" className="directory-panel__workbench" onClick={onOpenDutyPlanning} aria-label="開啟責任規劃工作台" title="開啟責任規劃工作台">工作台</button> : undefined}
+          headerAction={<>{onOpenDutyMap && <button type="button" className="directory-panel__workbench" onClick={onOpenDutyMap}>關係圖</button>}{onOpenDutyPlanning && <button type="button" className="directory-panel__workbench" onClick={onOpenDutyPlanning} aria-label="開啟責任規劃工作台" title="開啟責任規劃工作台">工作台</button>}</>}
         >
           {dutyConfigurationError && <div className="duty-directory-error" role="alert">{dutyConfigurationError}</div>}
           {visibleDuties.map((duty) => (

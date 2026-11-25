@@ -1,4 +1,5 @@
 import { PdmPublicationError } from './orgmasterPdmPublication'
+import { createOrgmasterDutyMapMiddleware } from './dutyMapApi'
 import { access, mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { dirname, resolve } from 'node:path'
@@ -153,8 +154,9 @@ function handleMountedApiRequest(request: IncomingMessage, response: ServerRespo
 }
 
 export function createOrgmasterApiMiddleware(root = process.cwd()): Connect.NextHandleFunction {
+  const dutyMap = createOrgmasterDutyMapMiddleware(root, (request, write) => authorizeWorkspace(root, request, write))
   return (request, response, next) => {
-    handleWorkspaceRequest(root, request, response, () => handleApiRequest(request, response, next))
+    dutyMap(request, response, () => handleWorkspaceRequest(root, request, response, () => handleApiRequest(request, response, next)))
   }
 }
 

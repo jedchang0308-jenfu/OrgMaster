@@ -60,6 +60,10 @@ export const ORGMASTER_PERMISSIONS = [
   { id: 'permission-orgmaster-management-method-manage-readable', applicationId: 'orgmaster', kind: 'action', code: 'orgmaster.management_method.manage_read_availability', name: '管理管理辦法閱讀狀態', risk: 'high', status: 'active' },
   { id: 'permission-orgmaster-management-method-manage-metadata', applicationId: 'orgmaster', kind: 'action', code: 'orgmaster.management_method.manage_metadata', name: '管理管理辦法 metadata', risk: 'normal', status: 'active' },
 ] as const satisfies readonly GovernancePermissionV1[]
+/** Business actions are registered by verified governance commands, never by admin seed/sync. */
+export const ORGMASTER_BUSINESS_PERMISSIONS = [
+  { id: 'permission-orgmaster-duty-map-review', applicationId: 'orgmaster', kind: 'action', code: 'orgmaster.duty_map.review', name: '盤點全公司職掌與章節', risk: 'normal', status: 'active' },
+] as const satisfies readonly GovernancePermissionV1[]
 export const ORGMASTER_WORKSPACE_VIEWER_ROLE = {
   id: 'role-orgmaster-workspace-viewer', applicationId: 'orgmaster', code: 'orgmaster_workspace_viewer',
   name: 'OrgMaster 工作區唯讀', status: 'active', systemDefined: false,

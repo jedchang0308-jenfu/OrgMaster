@@ -1,5 +1,7 @@
 # OrgMaster 文件地圖
 
+- DEV-071 部門職掌與管理辦法心智圖。[任務入口](dev_task.md#dev-071-duty-chapter-mind-map) · [開發規格與驗收](specs/DEV-071-duty-chapter-mind-map.md)。
+
 - DEV-057 PDM 權限異動先撤銷再發布已正式部署並完成三方驗收：[任務入口／正式收據與證據分層](dev_task.md#pdm-session-revocation) · [契約及 056／057 migration、啟用收據、隔離與正式證據](specs/DEV-057-identity-and-grant-contract-boundary.md#dev-057-pdm-session-revocation-formal-evidence-2026-11-15)。
 
 

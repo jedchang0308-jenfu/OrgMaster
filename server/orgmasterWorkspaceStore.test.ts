@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { getWorkspacePaths, getWorkspaceVersionPath, getWorkspaceIndex, getWorkspaceVersion, createWorkspaceDraft, saveWorkspaceVersion, saveWorkspaceVersionUnlocked, updateWorkspaceEntry, WorkspaceStoreError } from './orgmasterWorkspaceStore'
 import * as persistenceRepository from './orgmasterPersistenceRepository'
 import { createOrgDocumentFile } from '../src/documentStorage'
+import { createDutyMapSeed } from '../src/dutyMapSeed'
 import { screenshotOrganizationState } from '../src/screenshotData'
 import { validateWorkspaceIndex, validateWorkspaceVersionSummary } from '../src/versionWorkspace'
 
@@ -28,6 +29,28 @@ async function withCloudSqlMode<T>(run: () => Promise<T>) {
 }
 
 describe('workspace disk store', () => {
+  it('preserves the map when an older editor saves a document without its optional field', async () => {
+    const path = await root()
+    const legacyPath = getWorkspacePaths(path).manifest.replace('orgmaster-workspace.v1.json', 'orgmaster-document.v4.json')
+    await mkdir(join(path, 'data'), { recursive: true })
+    await writeFile(legacyPath, JSON.stringify(createOrgDocumentFile(screenshotOrganizationState, 'document')), 'utf8')
+    const index = await getWorkspaceIndex(path)
+    const created = await createWorkspaceDraft(path, index.currentVersionId, '職掌規劃相容', index.manifestRevision)
+    const draft = await getWorkspaceVersion(path, created.createdVersionId)
+    const seeded = await saveWorkspaceVersion(path, draft.version.id, createOrgDocumentFile(createDutyMapSeed(draft.document.state), 'draft'), draft.version.revision, 'draft-edit')
+    const oldClientDocument = structuredClone(seeded.document)
+    delete oldClientDocument.state.dutyMap
+    oldClientDocument.state.departments[0].name = '保留職掌圖的部門改名'
+    const saved = await saveWorkspaceVersion(path, draft.version.id, oldClientDocument, seeded.version.revision, 'draft-edit')
+    expect(saved.document.state.dutyMap).toEqual(seeded.document.state.dutyMap)
+    expect(saved.document.state.departments[0].name).toBe('保留職掌圖的部門改名')
+    const broken = structuredClone(saved.document)
+    delete broken.state.dutyMap
+    broken.state.duties = []
+    await expect(saveWorkspaceVersion(path, draft.version.id, broken, saved.version.revision, 'draft-edit')).rejects.toMatchObject({ code: 'VERSION_INVALID' })
+    expect((await getWorkspaceVersion(path, draft.version.id)).version.revision).toBe(saved.version.revision)
+    expect((await getWorkspaceVersion(path, index.currentVersionId)).document.state.dutyMap).toBeUndefined()
+  })
   it('migrates the current document once and preserves the legacy source', async () => {
     const path = await root()
     const legacyPath = getWorkspacePaths(path).manifest.replace('orgmaster-workspace.v1.json', 'orgmaster-document.v4.json')

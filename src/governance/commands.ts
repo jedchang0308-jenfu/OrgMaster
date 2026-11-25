@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import type { GovernanceCommand, GovernanceCommandV2, GovernanceCommandV3, GovernanceDocumentV1, GovernanceDocumentV2, GovernanceDocumentV3, GovernancePolicyDataV1, GovernancePolicyDataV2, GovernancePolicyDataV3, GovernanceRoleAssignmentV2, GovernanceRoleAssignmentV3 } from './types'
 import { genericV2AssignmentSurfaceIssue } from './assignmentSurface'
 import { aiPdmRoleSelectable } from './aiPdmRoleSchema'
-import { historicalAiPdmRoleSnapshotMatches } from './aiPdmCatalog'
+import { historicalAiPdmRoleSnapshotMatches, ORGMASTER_BUSINESS_PERMISSIONS } from './aiPdmCatalog'
 import { assertValidDocument, GovernanceValidationError, validatePolicyData, validatePolicyDataV2, validatePolicyDataV3 } from './validation'
 import { administrationPolicy, assertAdministrativeContinuity, hasAdministrativeGrant } from './administration'
 
@@ -193,6 +193,18 @@ export function applyGovernanceCommandV3(
   catalogs: Parameters<typeof validatePolicyDataV3>[2] = [],
 ): CommandApplyResultV3 {
   if (!actorPrincipalId.trim()) throw new GovernanceValidationError([{ code: 'IDENTITY_CONTEXT_REQUIRED', path: 'actorPrincipalId', message: '治理命令需要已驗 Principal' }])
+  if (command.type === 'UPSERT_PERMISSION') {
+    const expected = ORGMASTER_BUSINESS_PERMISSIONS.find(value => value.id === command.value.id
+      || value.applicationId === command.value.applicationId && value.code === command.value.code)
+    if (expected && Object.entries(expected).some(([key, value]) => command.value[key as keyof typeof command.value] !== value)) {
+      throw new GovernanceValidationError([{ code: 'BUSINESS_PERMISSION_CATALOG_CONFLICT', path: 'permissions', message: '業務動作須使用來源目錄的完整定義登錄' }])
+    }
+  }
+  if (command.type === 'SET_ROLE_PERMISSION_GRANT' && command.value.roleId === 'role-orgmaster-admin'
+    && ORGMASTER_BUSINESS_PERMISSIONS.some(value => value.id === command.value.permissionId
+      || document.draft.permissions.some(permission => permission.id === command.value.permissionId && permission.applicationId === value.applicationId && permission.code === value.code))) {
+    throw new GovernanceValidationError([{ code: 'PROTECTED_ADMINISTRATIVE_CAPABILITY', path: 'rolePermissionGrants', message: '業務動作須明示授予普通業務角色，不改管理員能力定義' }])
+  }
   if (administrationPolicy(document.draft).initializedByCommandId !== null) {
     const protectedRoleIds = new Set(['role-orgmaster-admin', 'role-application-system-admin', 'role-system-admin'])
     const value = 'value' in command ? command.value as unknown as Record<string, unknown> : null

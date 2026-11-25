@@ -10,6 +10,8 @@ Production 治理文件早於 managed identity 功能建立。既有草稿保有
 
 ## 架構決策
 
+DEV-071 相容補充：`ORGMASTER_PERMISSIONS` 保留 administration bootstrap v1 的 15 項凍結管理能力；本節的相容 sync 只處理這份集合。可新增的普通業務 action 另存 `ORGMASTER_BUSINESS_PERMISSIONS`，不加入 admin seed、預設 grants 或讀取時同步。`frontend-permission-projection.v1` 維持原 15 項 exact keys，供舊前後端相容；職掌圖的盤點資格另由 map DTO `canReview` 提供，不擴充這份 V1 wire。`orgmaster.duty_map.review` 由具權限的 verified Principal 以既有 `UPSERT_PERMISSION` 命令按來源目錄完整定義登錄，再透過普通角色 grant、global Employee 任用及發布生效；未登錄或未發布維持拒絕。新動作不自動授予 admin，既有 published snapshots、admin definition/hash 與 DB runtime 權限不變。
+
 - 讀取現行 V3 governance store 時，對 `ORGMASTER_PERMISSIONS` 執行相容、可重播的 draft-only catalog sync。
 - 只補上缺少的穩定 permission 與 `role-orgmaster-admin` allow grant；既有 active published snapshots、Employee assignments、identity links 及 application role assignments 均不改寫。
 - 若歷史資料以不同 ID 保存唯一且 active、kind／risk 相同的 application/code，沿用既有 ID 並只補缺少的管理者 allow grant；名稱等顯示 metadata 保持原值。

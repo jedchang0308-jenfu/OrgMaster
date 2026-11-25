@@ -163,6 +163,7 @@ export interface PositionView extends OrgMember {
 }
 
 export interface OrgDirectoryState {
+  dutyMap?: import('./dutyMap').DutyMapData
   employees: Employee[]
   departments: Department[]
   roles: Role[]

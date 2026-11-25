@@ -2,6 +2,8 @@
 
 ## 0. 行政權限 v2 producer 契約（2026-11-08；優先於本文舊流程）
 
+DEV-071 業務 action 邊界補充：bootstrap v1 的 `source-seed.json`、045 SQL、15 項 `ORGMASTER_PERMISSIONS` 及其 source checker 維持凍結；普通業務 action 的新增不改 administrative definition 或 app-admin binding。新增 `orgmaster.duty_map.review` 屬獨立 business catalog，不能自動附加 `role-orgmaster-admin` grant。具治理管理／發布權限的 verified Principal 依正常命令登錄來源定義，明示授予普通主管角色並建立 global Employee 任用，發布後始生效；職稱、root/app-admin 資格與僅 department scope 均不能代替此業務任用。取消任用沿既有撤權與發布流程，不重跑 bootstrap、不新增 runtime EXECUTE／DDL 權限；管理能力集合本身若要擴張，另依版本化行政契約處理，不覆寫已套用 SQL。
+
 OrgMaster 是唯一可寫入的行政授權權威。它保存兩種且只有兩種管理資格：平台範圍 platform_super_admin，以及精確 applicationId 的 application_system_admin。兩者都綁 exact active human Principal／Employee、manual basis、有效期／撤銷、authority epoch、command receipt 與 audit；不得由 email、職位、同人另一 Principal、Platform UI badge、app business role 或 SSO claim 推導。
 
 Platform 是唯一的人類互動核身及 smoke credential issuance authority。跨 owner 核發或續接流程中，人類只在 Platform 以 password 或 Google 完成一次 AAL1 核身；Platform 隨後提供不可變、可驗 hash 的 multi-owner identity/readback receipt，供各 owner 驗證各自的 exact human Principal／Employee identity readback、AAL1 assurance 與核身時間。Receipt 不含 password 或 credential bytes。OrgMaster 消費並驗證這份 receipt，不在自己的 loopback CLI 再要求輸入密碼、不另行核身，也不自行核發人類核身證明。
