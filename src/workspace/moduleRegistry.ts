@@ -1,4 +1,5 @@
 import type { DutyConfigurationExactLane } from '../dutyConfigurationRoute'
+import { DUTY_MAP_QUERY_KEYS, readDutyMapView, writeDutyMapView, sanitizeDutyMapView } from '../dutyMapRoute'
 import type { DutyPlanningStatusFilter } from '../dutyPlanningRoute'
 import type { OrgDirectoryState } from '../types'
 import { WORKBENCH_WIDTH_POLICIES } from './workbenchWidthPolicy'
@@ -167,7 +168,7 @@ const duties = moduleDescriptor({
   minWidth: WORKBENCH_WIDTH_POLICIES.duties.panelMinWidthPx,
   minHeight: 260,
   supportedSelectionKinds: ['duty', 'position', 'process-node'],
-  queryKeys: ['duty', 'dutyLane', 'dutyView', 'dutyQ', 'dutyStatus', 'dutyPosition', 'dutySourceRelation', 'dutyAttention'],
+  queryKeys: ['duty', 'dutyLane', 'dutyView', 'dutyQ', 'dutyStatus', 'dutyPosition', 'dutySourceRelation', 'dutyAttention', ...DUTY_MAP_QUERY_KEYS],
   defaultContext: {
     dutyId: null,
     lane: null,
@@ -185,7 +186,8 @@ const duties = moduleDescriptor({
     return {
       dutyId: cleanId(params.get('duty')),
       lane: lane && dutyLanes.has(lane as DutyConfigurationExactLane) ? lane as DutyConfigurationExactLane : null,
-      view: view === 'audit' || view === 'distribution' ? view : 'configuration',
+      view: view === 'audit' || view === 'distribution' || view === 'map' ? view : 'configuration',
+      ...(view === 'map' ? { mapState: readDutyMapView(params) } : {}),
       query: cleanQuery(params.get('dutyQ')),
       statusFilters: dutyStatuses.filter((status) => statuses.includes(status)),
       focusPositionId: cleanId(params.get('dutyPosition')),
@@ -197,6 +199,7 @@ const duties = moduleDescriptor({
     setOptional(params, 'duty', context.dutyId)
     setOptional(params, 'dutyLane', context.lane)
     if (context.view !== 'configuration') params.set('dutyView', context.view)
+    if (context.view === 'map' && context.mapState) writeDutyMapView(context.mapState, params)
     setOptional(params, 'dutyQ', context.query || null)
     for (const status of dutyStatuses) if (context.statusFilters.includes(status)) params.append('dutyStatus', status)
     setOptional(params, 'dutyPosition', context.focusPositionId)
@@ -211,7 +214,8 @@ const duties = moduleDescriptor({
     return {
       dutyId,
       lane: dutyId && context.lane && dutyLanes.has(context.lane) ? context.lane : null,
-      view: context.view === 'audit' || context.view === 'distribution' ? context.view : 'configuration',
+      view: context.view === 'audit' || context.view === 'distribution' || context.view === 'map' ? context.view : 'configuration',
+      ...(context.mapState ? { mapState: sanitizeDutyMapView(context.mapState, state) } : {}),
       query: cleanQuery(context.query),
       statusFilters: dutyStatuses.filter((status) => context.statusFilters.includes(status) && dutyStatusSet.has(status)),
       focusPositionId: state.positions.some((position) => position.id === context.focusPositionId && position.status === 'active') ? context.focusPositionId : null,

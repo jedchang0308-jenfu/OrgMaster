@@ -5,6 +5,7 @@ import {
 } from './roleCombinationRisks'
 import { validateEmployeeResponsibilities, type EmployeeResponsibilityValidationCode } from './employeeResponsibilities'
 import { normalizeDutyState, validateDutyState, type DutyValidationCode } from './duties'
+import { validateDutyMap } from './dutyMap'
 import { createDefaultOrganizationLevels } from './organizationLevels'
 import { createEmptyProcessPlanningCollections, normalizeProcessPlanningState, validateProcessPlanningState, type ProcessPlanningValidationCode } from './processPlanning'
 import type { Employee, OrgDirectoryState, OrgMember, Position } from './types'
@@ -50,6 +51,7 @@ export type DocumentFailureCode =
   | 'INVALID_JSON'
   | 'INVALID_APP'
   | 'UNSUPPORTED_VERSION'
+  | 'DUTY_MAP_INVALID'
   | 'INVALID_DOCUMENT_SHAPE'
   | 'MIGRATION_ID_MISMATCH'
   | RoleCombinationRiskRuleValidationCode
@@ -190,9 +192,8 @@ function validationFailure(state: OrgDirectoryState): ParseOrgDocumentResult | n
   const result = validateOrganizationState(state, { allowDisconnectedDepartments: true })
   if (!result.ok) return failure(result.code, result.positionIds, result.departmentIds)
   const responsibilityResult = validateEmployeeResponsibilities(state)
-  return responsibilityResult.ok
-    ? null
-    : failure(responsibilityResult.code, responsibilityResult.assignmentIds)
+  if (!responsibilityResult.ok) return failure(responsibilityResult.code, responsibilityResult.assignmentIds)
+  return validateDutyMap(state).ok ? null : failure('DUTY_MAP_INVALID')
 }
 
 function normalizeSiblingOrders<T extends Pick<OrgDirectoryState, 'positions' | 'members'>>(state: T): T {

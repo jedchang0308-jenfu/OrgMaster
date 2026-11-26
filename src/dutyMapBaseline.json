@@ -1,0 +1,727 @@
+{
+  "source": "jenfu-duty-map-20261125",
+  "departments": [
+    {
+      "name": "總經理室",
+      "side": "right",
+      "order": 0,
+      "groups": [
+        {
+          "title": "經營策略與事業發展",
+          "duties": [
+            {
+              "title": "經營策略與年度重點規劃",
+              "chapterId": "01"
+            },
+            {
+              "title": "產品組合與發展方向管理",
+              "chapterId": "01"
+            },
+            {
+              "title": "策略合作與外部專業資源管理",
+              "chapterId": "01"
+            }
+          ]
+        },
+        {
+          "title": "組織治理與長期人才延續",
+          "duties": [
+            {
+              "title": "組織與部門權責設計",
+              "chapterId": "01"
+            },
+            {
+              "title": "決策授權與內控分工設計",
+              "chapterId": "01"
+            },
+            {
+              "title": "經營接班與關鍵決策延續規劃",
+              "chapterId": "01"
+            },
+            {
+              "title": "員工認股與長期激勵規劃",
+              "chapterId": "01"
+            }
+          ]
+        },
+        {
+          "title": "投資、資源與風險管理",
+          "duties": [
+            {
+              "title": "重大投資與資源配置評估",
+              "chapterId": "01"
+            },
+            {
+              "title": "經營風險與應對有效性管理",
+              "chapterId": "01"
+            },
+            {
+              "title": "營運持續與重大事件應變規劃",
+              "chapterId": "01"
+            },
+            {
+              "title": "保險配置與重大理賠統籌",
+              "chapterId": "01"
+            }
+          ]
+        },
+        {
+          "title": "法遵、誠信與查核",
+          "duties": [
+            {
+              "title": "法遵與重大法律風險統籌",
+              "chapterId": "01"
+            },
+            {
+              "title": "誠信、利益衝突與舞弊疑慮處理",
+              "chapterId": "01"
+            },
+            {
+              "title": "風險導向內部查核",
+              "chapterId": "12"
+            },
+            {
+              "title": "公司級外部查核協調",
+              "chapterId": "12"
+            }
+          ]
+        },
+        {
+          "title": "經營績效與跨部門改善",
+          "duties": [
+            {
+              "title": "經營績效檢討與管理決策追蹤",
+              "chapterId": "12"
+            },
+            {
+              "title": "跨部門營運改善與制度簡化",
+              "chapterId": "12"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "營銷部",
+      "side": "right",
+      "order": 1,
+      "groups": [
+        {
+          "title": "市場行銷與客戶開發",
+          "duties": [
+            {
+              "title": "市場情報與銷售通路開發",
+              "chapterId": "02"
+            },
+            {
+              "title": "品牌與產品行銷內容經營",
+              "chapterId": "02"
+            },
+            {
+              "title": "展會與業務活動管理",
+              "chapterId": "02"
+            },
+            {
+              "title": "銷售線索與客戶資料管理",
+              "chapterId": "02"
+            }
+          ]
+        },
+        {
+          "title": "需求評估與商務承接",
+          "duties": [
+            {
+              "title": "客戶需求與接案可行性評估",
+              "chapterId": "02"
+            },
+            {
+              "title": "標準設備選型與應用提案",
+              "chapterId": "02"
+            },
+            {
+              "title": "成本估算、報價與商務條件管理",
+              "chapterId": "02"
+            },
+            {
+              "title": "投標與資格文件管理",
+              "chapterId": "02"
+            },
+            {
+              "title": "訂單承接與專案範圍交接",
+              "chapterId": "02"
+            },
+            {
+              "title": "契約變更與商務爭議處理",
+              "chapterId": "02"
+            }
+          ]
+        },
+        {
+          "title": "專案管理與客戶驗收",
+          "duties": [
+            {
+              "title": "專案時程、成本與議題管理",
+              "chapterId": "02"
+            },
+            {
+              "title": "請款資料與客戶收款協調",
+              "chapterId": "02"
+            },
+            {
+              "title": "客戶驗收、交付文件與專案結案",
+              "chapterId": "02"
+            }
+          ]
+        },
+        {
+          "title": "訂單工程與設計規劃",
+          "duties": [
+            {
+              "title": "訂單設計規劃、拆圖與下料作業",
+              "chapterId": "03"
+            },
+            {
+              "title": "訂單BOM、工程版次與變更交接",
+              "chapterId": "03"
+            }
+          ]
+        },
+        {
+          "title": "物流與出口協調",
+          "duties": [
+            {
+              "title": "交貨條件、物流安排與運送追蹤",
+              "chapterId": "07"
+            },
+            {
+              "title": "出口交運與目的地文件協調",
+              "chapterId": "07"
+            }
+          ]
+        },
+        {
+          "title": "客戶關係與售後服務",
+          "duties": [
+            {
+              "title": "客戶需求、現場工況與使用回饋整合",
+              "chapterId": "07"
+            },
+            {
+              "title": "客戶現場窗口與海外服務協調",
+              "chapterId": "07"
+            },
+            {
+              "title": "售後服務與延伸業務管理",
+              "chapterId": "07"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "研發部",
+      "side": "left",
+      "order": 1,
+      "groups": [
+        {
+          "title": "產品研發與驗證",
+          "duties": [
+            {
+              "title": "產品技術規格與共通選型方案",
+              "chapterId": "03"
+            },
+            {
+              "title": "預處理設備新產品研發與整機設計",
+              "chapterId": "03"
+            },
+            {
+              "title": "標準模組與設計準則開發",
+              "chapterId": "03"
+            },
+            {
+              "title": "試作、設計驗證與使用確認",
+              "chapterId": "03"
+            }
+          ]
+        },
+        {
+          "title": "工程資料與產品技術管理",
+          "duties": [
+            {
+              "title": "產品圖面、BOM與工程基線管理",
+              "chapterId": "03"
+            },
+            {
+              "title": "超標準工程變更與技術風險評估",
+              "chapterId": "03"
+            },
+            {
+              "title": "產品操作、安裝與維護技術文件",
+              "chapterId": "03"
+            },
+            {
+              "title": "產品生命週期與停產替代管理",
+              "chapterId": "03"
+            },
+            {
+              "title": "技術智慧財產與成果保護",
+              "chapterId": "03"
+            },
+            {
+              "title": "出口目的地技術適用性評估",
+              "chapterId": "03"
+            }
+          ]
+        },
+        {
+          "title": "製程技術與產品改善",
+          "duties": [
+            {
+              "title": "製程、工裝與可製造性技術改善",
+              "chapterId": "03"
+            },
+            {
+              "title": "產品改良、降本與技術改善專案",
+              "chapterId": "03"
+            }
+          ]
+        },
+        {
+          "title": "品質策劃、檢驗與放行",
+          "duties": [
+            {
+              "title": "品質策劃與驗收準則管理",
+              "chapterId": "06"
+            },
+            {
+              "title": "進料與委外品質驗收",
+              "chapterId": "06"
+            },
+            {
+              "title": "製程、成品檢驗與出貨放行",
+              "chapterId": "06"
+            },
+            {
+              "title": "量測設備適用性與失準影響管理",
+              "chapterId": "06"
+            },
+            {
+              "title": "不合格處置與偏差放行管理",
+              "chapterId": "06"
+            },
+            {
+              "title": "品質系統建置與技術經驗標準化",
+              "chapterId": "12"
+            }
+          ]
+        },
+        {
+          "title": "品質改善與售後技術",
+          "duties": [
+            {
+              "title": "產品失效追溯與矯正改善",
+              "chapterId": "12"
+            },
+            {
+              "title": "重大產品品質風險遏止",
+              "chapterId": "06"
+            },
+            {
+              "title": "品質損失與服務趨勢分析",
+              "chapterId": "12"
+            },
+            {
+              "title": "售後技術支援與改造方案",
+              "chapterId": "07"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "生產部",
+      "side": "left",
+      "order": 0,
+      "groups": [
+        {
+          "title": "生產準備與製造執行",
+          "duties": [
+            {
+              "title": "開工準備與首件自檢",
+              "chapterId": "05"
+            },
+            {
+              "title": "製造加工與零件製作",
+              "chapterId": "05"
+            },
+            {
+              "title": "機械、管路與電控組裝整合",
+              "chapterId": "05"
+            }
+          ]
+        },
+        {
+          "title": "物料、庫存與出貨作業",
+          "duties": [
+            {
+              "title": "收貨與物料成品保管",
+              "chapterId": "05"
+            },
+            {
+              "title": "工單用料與在製品交接",
+              "chapterId": "05"
+            },
+            {
+              "title": "存貨盤點與呆滯報廢處置",
+              "chapterId": "05"
+            },
+            {
+              "title": "出貨齊套、包裝與裝卸作業",
+              "chapterId": "07"
+            }
+          ]
+        },
+        {
+          "title": "生產品質與異常處理",
+          "duties": [
+            {
+              "title": "製造自檢與生產履歷回報",
+              "chapterId": "05"
+            },
+            {
+              "title": "生產異常與核定返工作業",
+              "chapterId": "06"
+            }
+          ]
+        },
+        {
+          "title": "客戶現場工務",
+          "duties": [
+            {
+              "title": "現場安裝、試車與操作交付",
+              "chapterId": "07"
+            },
+            {
+              "title": "現場維修、保養與改造執行",
+              "chapterId": "07"
+            }
+          ]
+        },
+        {
+          "title": "生產廠務與作業安全",
+          "duties": [
+            {
+              "title": "生產空間、動線與現場秩序管理",
+              "chapterId": "09"
+            },
+            {
+              "title": "生產廠務、設備與工裝維護",
+              "chapterId": "09"
+            },
+            {
+              "title": "生產及工務作業安全控制",
+              "chapterId": "09"
+            }
+          ]
+        },
+        {
+          "title": "生產與物料計畫",
+          "duties": [
+            {
+              "title": "生產與物料供應計畫",
+              "chapterId": "05"
+            }
+          ]
+        },
+        {
+          "title": "生產採購、委外與供應商管理",
+          "duties": [
+            {
+              "title": "供應商開發與供應能力管理",
+              "chapterId": "04"
+            },
+            {
+              "title": "採購訂單與交期管理",
+              "chapterId": "04"
+            },
+            {
+              "title": "委外加工與外部服務交付管理",
+              "chapterId": "04"
+            },
+            {
+              "title": "採購對帳與付款資料交接",
+              "chapterId": "04"
+            },
+            {
+              "title": "進口採購與通關協調",
+              "chapterId": "04"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "財務部",
+      "side": "left",
+      "order": 2,
+      "groups": [
+        {
+          "title": "會計結帳與稅務治理",
+          "duties": [
+            {
+              "title": "會計政策、結帳與財務報表",
+              "chapterId": "11"
+            },
+            {
+              "title": "支出憑證缺口與認列差異管理",
+              "chapterId": "11"
+            },
+            {
+              "title": "稅務申報、紀錄保存與專業查核交接",
+              "chapterId": "11"
+            },
+            {
+              "title": "公私往來與暫收付款項清理",
+              "chapterId": "11"
+            }
+          ]
+        },
+        {
+          "title": "收入、應收與收款",
+          "duties": [
+            {
+              "title": "收入與銷項憑證管理",
+              "chapterId": "11"
+            },
+            {
+              "title": "應收、收款與逾期帳款管理",
+              "chapterId": "11"
+            }
+          ]
+        },
+        {
+          "title": "支出核算與資金支付",
+          "duties": [
+            {
+              "title": "應付、費用與員工報支核算",
+              "chapterId": "11"
+            },
+            {
+              "title": "零用金與小額現金管理",
+              "chapterId": "11"
+            },
+            {
+              "title": "付款排程與支付對象核實",
+              "chapterId": "11"
+            },
+            {
+              "title": "薪資支付與帳務處理",
+              "chapterId": "11"
+            }
+          ]
+        },
+        {
+          "title": "成本、資產與經營分析",
+          "duties": [
+            {
+              "title": "成本核算與訂單產品獲利分析",
+              "chapterId": "11"
+            },
+            {
+              "title": "資產價值、折舊與資本支出帳務",
+              "chapterId": "11"
+            },
+            {
+              "title": "預算、現金流與經營財務分析",
+              "chapterId": "11"
+            }
+          ]
+        },
+        {
+          "title": "銀行往來與資金風險",
+          "duties": [
+            {
+              "title": "銀行往來、資金對帳與差異追查",
+              "chapterId": "11"
+            },
+            {
+              "title": "融資、外幣結算與資金風險管理",
+              "chapterId": "11"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "管理部",
+      "side": "right",
+      "order": 2,
+      "groups": [
+        {
+          "title": "人事行政與發展支援",
+          "duties": [
+            {
+              "title": "人力規劃、招募與任用作業",
+              "chapterId": "08"
+            },
+            {
+              "title": "人事異動與到離職交接",
+              "chapterId": "08"
+            },
+            {
+              "title": "職掌資料與職能需求維護",
+              "chapterId": "08"
+            },
+            {
+              "title": "各部門人事與訓練行政支援",
+              "chapterId": "08"
+            },
+            {
+              "title": "外籍及外部支援人力協調",
+              "chapterId": "08"
+            },
+            {
+              "title": "出勤、外勤差旅與工時資料管理",
+              "chapterId": "08"
+            },
+            {
+              "title": "薪資計算、投保及福利作業",
+              "chapterId": "08"
+            },
+            {
+              "title": "員工溝通與勞資議題協調",
+              "chapterId": "08"
+            },
+            {
+              "title": "員工健康與工作適應協調",
+              "chapterId": "08"
+            }
+          ]
+        },
+        {
+          "title": "公司行政與共用設施",
+          "duties": [
+            {
+              "title": "公司登記、印鑑與重要證照管理",
+              "chapterId": "01"
+            },
+            {
+              "title": "共用資產與一般車輛管理",
+              "chapterId": "09"
+            },
+            {
+              "title": "廠房與共用設施修繕管理",
+              "chapterId": "09"
+            },
+            {
+              "title": "辦公室行政、設施與工作環境管理",
+              "chapterId": "09"
+            }
+          ]
+        },
+        {
+          "title": "共通職安與環境管理",
+          "duties": [
+            {
+              "title": "共通職安資源、應變與事件紀錄管理",
+              "chapterId": "09"
+            },
+            {
+              "title": "環境、清運與共用資源管理",
+              "chapterId": "09"
+            }
+          ]
+        },
+        {
+          "title": "數位建置與資訊服務",
+          "duties": [
+            {
+              "title": "數位系統與自動化建置管理",
+              "chapterId": "10"
+            },
+            {
+              "title": "帳號、資訊設備與使用者服務",
+              "chapterId": "10"
+            },
+            {
+              "title": "雲端、資訊供應商與費用管理",
+              "chapterId": "10"
+            }
+          ]
+        },
+        {
+          "title": "資訊安全與資料治理",
+          "duties": [
+            {
+              "title": "資訊安全、資料保護與事件應對",
+              "chapterId": "10"
+            },
+            {
+              "title": "備份、還原與資料復原驗證",
+              "chapterId": "10"
+            },
+            {
+              "title": "共用文件與資訊取得支援",
+              "chapterId": "10"
+            },
+            {
+              "title": "共用知識與主檔維護支援",
+              "chapterId": "10"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "crossChapterLinks": [
+    {
+      "departmentName": "研發部",
+      "kind": "duty",
+      "title": "進料與委外品質驗收",
+      "chapterId": "04",
+      "explanation": "提供進料與委外的品質驗收結果，銜接生產對帳與財務付款"
+    },
+    {
+      "departmentName": "財務部",
+      "kind": "duty",
+      "title": "付款排程與支付對象核實",
+      "chapterId": "04",
+      "explanation": "接收採購對帳與驗收依據，核實支付對象並安排付款"
+    },
+    {
+      "departmentName": "管理部",
+      "kind": "group",
+      "title": "公司行政與共用設施",
+      "chapterId": "04",
+      "explanation": "依授權辦理辦公用品、資訊設備與共用設施採購"
+    },
+    {
+      "departmentName": "生產部",
+      "kind": "duty",
+      "title": "製造自檢與生產履歷回報",
+      "chapterId": "06",
+      "explanation": "將製造自檢與履歷交付品質檢驗"
+    },
+    {
+      "departmentName": "研發部",
+      "kind": "duty",
+      "title": "製程、成品檢驗與出貨放行",
+      "chapterId": "07",
+      "explanation": "提供成品與出貨放行依據"
+    },
+    {
+      "departmentName": "財務部",
+      "kind": "duty",
+      "title": "薪資支付與帳務處理",
+      "chapterId": "08",
+      "explanation": "承接人事薪資計算資料以安排支付及帳務"
+    },
+    {
+      "departmentName": "營銷部",
+      "kind": "duty",
+      "title": "訂單BOM、工程版次與變更交接",
+      "chapterId": "10",
+      "explanation": "交接訂單工程資料與有效版次"
+    }
+  ]
+}

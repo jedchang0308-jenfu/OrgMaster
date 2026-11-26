@@ -1,4 +1,5 @@
 import { closeAssignmentsForPositions } from './assignments'
+import { reconcileDutyMap, validateDutyMap } from './dutyMap'
 import { reconcileEmployeeResponsibilities } from './employeeResponsibilities'
 import { removeDepartmentFromDirectory } from './directories'
 import { duplicatePosition } from './positions'
@@ -75,6 +76,7 @@ export type OrganizationCommandIssueCode = OrganizationValidationCode
   | 'DUTY_PLAN_TARGET_INVALID'
   | 'DUTY_PLAN_PRIMARY_CONFLICT'
   | 'DUTY_PLAN_DOMAIN_INVALID'
+  | 'DUTY_MAP_INVALID'
   | 'READ_ONLY'
 
 export type OrganizationCommandResult =
@@ -133,13 +135,14 @@ function validateApplied(
   asOf?: string,
 ): OrganizationCommandResult {
   const repaired = normalizeDutyState(reconcileEmployeeResponsibilities(state, asOf))
-  const normalized = normalizeProcessPlanningState(repaired)
+  const normalized = reconcileDutyMap(originalState, normalizeProcessPlanningState(repaired))
   const validation = validateOrganizationState(normalized, validationOptions)
   if (!validation.ok) return reject(originalState, validation.code, validation.positionIds, validation.departmentIds)
   const dutyValidation = validateDutyState(normalized)
   if (!dutyValidation.ok) return reject(originalState, dutyValidation.issue.code, dutyValidation.issue.positionIds)
   const processValidation = validateProcessPlanningState(normalized)
   if (!processValidation.ok) return reject(originalState, processValidation.issue.code, [], [], processValidation.issue.dutyIds, processValidation.issue.processIds, processValidation.issue.processNodeIds)
+  if (!validateDutyMap(normalized).ok) return reject(originalState, 'DUTY_MAP_INVALID')
   return { status: 'applied', state: normalized, changedPositionIds }
 }
 

@@ -239,7 +239,10 @@ export async function saveWorkspaceVersionUnlocked(
     if ((entry.kind === 'current' && mode !== 'current-maintenance') || (entry.kind === 'draft' && mode !== 'draft-edit')) throw new WorkspaceStoreError('VERSION_INVALID')
     const current = await readVersion(rootDirectory, entry)
     if (current.version.revision !== expectedVersionRevision) throw new WorkspaceStoreError('VERSION_CONFLICT')
-    const parsed = parseOrgDocument(document)
+    const compatibleDocument = document?.state && document.state.dutyMap === undefined && current.document.state.dutyMap
+      ? { ...document, state: { ...document.state, dutyMap: current.document.state.dutyMap } }
+      : document
+    const parsed = parseOrgDocument(compatibleDocument)
     if (!parsed.ok || parsed.document.kind !== (entry.kind === 'current' ? 'document' : 'draft')) throw new WorkspaceStoreError('VERSION_INVALID')
     await assertMigrationWritesAllowed(rootDirectory)
     try {

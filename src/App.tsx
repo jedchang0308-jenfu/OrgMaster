@@ -72,6 +72,9 @@ import {
 } from './positionDragInteraction'
 import { Toolbar } from './components/Toolbar'
 import { DutyCenter } from './components/DutyCenter'
+import { DutyMindMap } from './components/DutyMindMap'
+import { DEFAULT_DUTY_MAP_VIEW } from './dutyMap'
+import { initializeDutyMapDraft } from './dutyMapDraft'
 import { DutyDetailDrawer } from './components/DutyDetailDrawer'
 import { DutyDeleteDialog, DutyEditDialog } from './components/DutyDialogs'
 import { GovernanceCenter } from './components/GovernanceCenter'
@@ -396,6 +399,7 @@ function ProtectedApp() {
     processNodes,
     processEdges,
     processNodeDutyLinks,
+    dutyMap,
     commit: commitHistory,
     commitState: commitStateHistory,
     undo,
@@ -418,7 +422,8 @@ function ProtectedApp() {
     processNodes,
     processEdges,
     processNodeDutyLinks,
-  }), [assignments, departments, duties, dutyPositionRelations, employees, members, organizationLayout, organizationLevels, positions, processEdges, processNodeDutyLinks, processNodes, processes, roleCombinationRiskRules, roles])
+    ...(dutyMap ? { dutyMap } : {}),
+  }), [assignments, departments, duties, dutyMap, dutyPositionRelations, employees, members, organizationLayout, organizationLevels, positions, processEdges, processNodeDutyLinks, processNodes, processes, roleCombinationRiskRules, roles])
   const currentSignature = useMemo(() => orgStateSignature(currentState), [currentState])
   const [workspaceLayoutNotice, setWorkspaceLayoutNotice] = useState('')
   const reportWorkspaceLayoutPersistenceFailure = useCallback(() => {
@@ -575,6 +580,15 @@ function ProtectedApp() {
     const context = { view, processId: processId ?? null, processNodeId: null, dutyId: null }
     workspaceController.openOrFocus('processes', context, 'cross-panel')
   }, [workspaceController.openOrFocus])
+
+  const openDutyMapPage = useCallback(() => {
+    const existing = workspaceController.state.session.panels.duties?.context
+    workspaceController.openOrFocus('duties', {
+      dutyId: null, lane: null, query: '', statusFilters: [],
+      focusPositionId: null, sourceRelationId: null, attentionOnly: false,
+      ...existing, view: 'map', mapState: existing?.mapState ?? { ...DEFAULT_DUTY_MAP_VIEW },
+    }, 'cross-panel')
+  }, [workspaceController.openOrFocus, workspaceController.state.session.panels.duties?.context])
 
   const navigateProcessPlanning = useCallback((url: string) => {
     const target = new URL(url, window.location.origin)
@@ -1392,6 +1406,7 @@ function ProtectedApp() {
   const persistDraft = useCallback(async () => {
     const version = workspaceIndexRef.current?.versions.find((candidate) => candidate.id === activeVersionIdRef.current)
     if (!serverReadyRef.current || recoveryOpenRef.current || serverHydrationPendingRef.current || !version || !workspaceMutationAllowedRef.current) return false
+    if (currentSignatureRef.current === savedSignatureRef.current) return true
     const saved = await saveWorkspaceDocument(
       version.id,
       createOrgDocumentFile(currentStateRef.current, version.kind === 'current' ? 'document' : 'draft'),
@@ -1517,7 +1532,7 @@ function ProtectedApp() {
   }, [hydrateWorkspaceVersion])
 
   useEffect(() => {
-    if (recoveryOpen || !serverReady || !editingEnabled || !workspaceMutationAllowed) {
+    if (recoveryOpen || !serverReady || !editingEnabled || !workspaceMutationAllowed || !isDirty) {
       setAutoSavePending(false)
       return
     }
@@ -1532,7 +1547,7 @@ function ProtectedApp() {
       void persistDraft()
     }, AUTO_SAVE_DELAY_MS)
     return () => window.clearTimeout(timer)
-  }, [currentSignature, editingEnabled, persistDraft, recoveryOpen, serverReady, workspaceMutationAllowed])
+  }, [currentSignature, editingEnabled, isDirty, persistDraft, recoveryOpen, serverReady, workspaceMutationAllowed])
 
   useEffect(() => {
     const flushDraft = () => {
@@ -2788,6 +2803,7 @@ function ProtectedApp() {
       onSelectDutyLane={selectDutyLane}
       onOpenDutyConfigurationDetail={openDutyConfigurationDetail}
       onOpenDutyPlanning={() => openDutyPlanningPage('audit')}
+      onOpenDutyMap={openDutyMapPage}
       workspaceEntityDragSource={kind === 'duties' ? 'duties' : kind === 'employees' ? 'employees' : undefined}
       onRelationCommit={kind === 'duties' ? commitRelationPlacementTarget : undefined}
       initialQuery={kind === 'employees'
@@ -3126,6 +3142,39 @@ function ProtectedApp() {
     levels: (visibility) => renderMasterDataPanel('levels', visibility),
     duties: (visibility) => {
       const context = workspaceController.state.session.panels.duties?.context
+      if (context?.view === 'map') return <section className="duty-map-workspace" data-visibility={visibility}>
+        <nav className="duty-planning-tabs" aria-label="職掌檢視">
+          <button type="button" aria-current="page">關係圖</button>
+          <button type="button" onClick={() => workspaceController.updatePanelContext('duties', { ...context, view: 'configuration' })}>職掌配置</button>
+          <button type="button" onClick={() => workspaceController.updatePanelContext('duties', { ...context, view: 'audit' })}>責任盤點</button>
+          <button type="button" onClick={() => workspaceController.updatePanelContext('duties', { ...context, view: 'distribution' })}>責任分布</button>
+        </nav>
+        <DutyMindMap
+          versionId={activeVersionId}
+          revision={serverRevision}
+          context={context.mapState ?? DEFAULT_DUTY_MAP_VIEW}
+          onContextChange={mapState => workspaceController.updatePanelContext('duties', { ...context, mapState })}
+          onOpenMethod={methodId => {
+            workspaceController.openOrFocus('management-methods', { methodId, view: 'readable', query: '', chapter: null }, 'cross-panel')
+            void workspaceController.requestWorkspaceDetailTransition('management-methods', { visible: true })
+          }}
+          onCreateDraft={versionMutationAllowed ? async () => {
+            if (!activeVersionId || workspaceBusy) return
+            if (isDirty && !await persistDraft()) throw new Error('請先完成目前版本的保存')
+            setWorkspaceBusy(true)
+            try {
+              const initialized = await initializeDutyMapDraft(activeVersionId)
+              const nextIndex = await loadWorkspaceIndex()
+              if (nextIndex.status === 'loaded') setWorkspaceIndex(nextIndex.value)
+              const hydrated = await hydrateWorkspaceVersion(initialized.version.id)
+              if (hydrated.status !== 'loaded') throw new Error(hydrated.message)
+              setWorkspaceMode('draft-edit')
+            } finally {
+              setWorkspaceBusy(false)
+            }
+          } : undefined}
+        />
+      </section>
        if (!context || context.view === 'configuration') return <DutyModuleAdapter mode="configuration" visibility={visibility} detail={dutyConfigurationDetail} detailVisible={workspaceController.state.session.openDetails.includes('duties')} onDetailWidthTransition={(visible) => requestWorkbenchDetailForWidth('duties', visible)} listWidthPx={workbenchListWidths.duties ?? null} onListWidthChange={(width) => updateWorkbenchListWidth('duties', width)} onListWidthCommit={(width) => commitWorkbenchListWidth('duties', width)}>{renderDirectorySurface('duties')}</DutyModuleAdapter>
       const selectPlanningDuty = (dutyId: string | null) => {
         void workspaceController.requestWorkspaceDetailTransition('duties', { visible: Boolean(dutyId), context: { ...context, dutyId, lane: null } })
@@ -3136,6 +3185,7 @@ function ProtectedApp() {
             query={context.query}
             anomalyTypes={context.statusFilters}
             onNavigateView={(view) => workspaceController.updatePanelContext('duties', { ...context, view })}
+            onOpenDutyMap={openDutyMapPage}
             onQueryChange={(query) => workspaceController.updatePanelContext('duties', { ...context, query })}
             onAnomalyTypesChange={(statusFilters) => workspaceController.updatePanelContext('duties', { ...context, statusFilters })}
             onClearFilters={() => workspaceController.updatePanelContext('duties', { ...context, query: '', statusFilters: [] })}
@@ -3151,6 +3201,7 @@ function ProtectedApp() {
         query={context.query}
         anomalyTypes={context.statusFilters}
         onNavigateView={(view) => workspaceController.updatePanelContext('duties', { ...context, view })}
+        onOpenDutyMap={openDutyMapPage}
         onQueryChange={(query) => workspaceController.updatePanelContext('duties', { ...context, query })}
         onAnomalyTypesChange={(statusFilters) => workspaceController.updatePanelContext('duties', { ...context, statusFilters })}
         onClearFilters={() => workspaceController.updatePanelContext('duties', { ...context, query: '', statusFilters: [] })}
@@ -3226,6 +3277,7 @@ function ProtectedApp() {
         initialView={context.view}
         initialChapter={context.chapter}
         state={currentState}
+        organizationVersionId={activeVersionId}
         onClose={() => { void workspaceController.requestWorkspaceDetailTransition('management-methods', { visible: false }) }}
         visibility={visibility}
         workspaceMutationAllowed={workspaceMutationAllowed}
