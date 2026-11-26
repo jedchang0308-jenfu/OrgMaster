@@ -23,6 +23,7 @@ const servers = []
 const checks = []
 const modelInputs = []
 const apiResponses = []
+const a17EndpointChecks = []
 let providerMode = 'valid'
 let browser
 let page
@@ -211,6 +212,51 @@ try {
     assert.equal(modelInputs[0].chapters.length, 12)
     await expectCount(graph.locator('.duty-mind-map__node--department'), 6)
     await page.screenshot({ path: join(evidence, 'ai-full-company.png'), fullPage: true })
+    const endpoints = [
+      { title: '現場維修、保養與改造執行', path: '生產部 › 客戶現場工務 › 現場維修、保養與改造執行', image: 'a17-production-endpoint.png' },
+      { title: '產品操作、安裝與維護技術文件', path: '研發部 › 工程資料與產品技術管理 › 產品操作、安裝與維護技術文件', image: 'a17-research-endpoint.png' },
+    ]
+    const sameReason = '執行依據仍須主管確認'
+    for (const endpoint of endpoints) {
+      const node = graph.locator('.duty-mind-map__node--duty').filter({ hasText: endpoint.title })
+      await expectCount(node, 1)
+      // Normal canvas scrolling focuses one original branch at a time; no fit/layout override.
+      await node.scrollIntoViewIfNeeded()
+      await node.locator('.duty-mind-map__node-title').click()
+      await node.locator('.duty-mind-map__node-title[aria-pressed="true"]').waitFor()
+      assert((await node.getAttribute('class')).includes('is-selected'))
+      assert((await node.getAttribute('class')).includes('is-finding'))
+      await node.getByRole('button', { name: 'AI 盤點：' + endpoint.title, exact: true }).waitFor()
+      const detail = graph.locator('[aria-label="AI 盤點理由"]')
+      const text = await detail.innerText()
+      for (const other of endpoints) assert(text.includes(other.path), 'missing AI endpoint path: ' + other.path)
+      assert(text.includes(sameReason))
+      assert(text.includes('確認修復經驗的圖面交接'))
+      // Scrolling the existing summary is allowed; both paths and the shared reason must be readable together.
+      await detail.locator('dd').filter({ hasText: sameReason }).scrollIntoViewIfNeeded()
+      const readability = await detail.evaluate((section, expectedTexts) => {
+        const panel = section.closest('.duty-mind-map__detail').getBoundingClientRect()
+        const clip = { left: Math.max(0, panel.left), top: Math.max(0, panel.top), right: Math.min(innerWidth, panel.right), bottom: Math.min(innerHeight, panel.bottom) }
+        return expectedTexts.map(expected => {
+          const walker = document.createTreeWalker(section, NodeFilter.SHOW_TEXT)
+          let found
+          while (walker.nextNode()) if (walker.currentNode.textContent.trim() === expected) { found = walker.currentNode; break }
+          if (!found) return { text: expected, readable: false, reason: 'text not found' }
+          const range = document.createRange(); range.selectNodeContents(found)
+          const rects = [...range.getClientRects()]
+          const fontSize = parseFloat(getComputedStyle(found.parentElement).fontSize)
+          return { text: expected, fontSize, readable: fontSize >= 12 && rects.length > 0 && rects.every(rect => rect.width > 0 && rect.height > 0 && rect.left >= clip.left - 1 && rect.right <= clip.right + 1 && rect.top >= clip.top - 1 && rect.bottom <= clip.bottom + 1) }
+        })
+      }, [...endpoints.map(value => value.path), sameReason])
+      assert(readability.every(value => value.readable), 'AI endpoint summary is clipped: ' + JSON.stringify(readability))
+      const branchVisible = await node.locator('.duty-mind-map__node-title').evaluate(button => {
+        const rect = button.getBoundingClientRect(), view = button.closest('.duty-mind-map__viewport').getBoundingClientRect()
+        return rect.left >= view.left - 1 && rect.right <= view.right + 1 && rect.top >= Math.max(0, view.top) - 1 && rect.bottom <= Math.min(innerHeight, view.bottom) + 1
+      })
+      assert(branchVisible, 'selected original branch is not readable: ' + endpoint.path)
+      await page.screenshot({ path: join(evidence, endpoint.image), fullPage: true })
+      a17EndpointChecks.push({ endpoint: endpoint.path, finding: '確認修復經驗的圖面交接', reason: sameReason, branchSelected: true, branchMarked: true, readability, image: endpoint.image })
+    }
     await graph.getByRole('button', { name: '關閉 AI 結果', exact: true }).click()
     assert.equal(await graph.getByLabel('篩選部門', { exact: true }).inputValue(), finance)
     await expectCount(graph.locator('.duty-mind-map__node--department'), 1)
@@ -394,7 +440,7 @@ try {
   const clientArtifacts = await Promise.all(clientFiles.map(async path => ({ path, sha256: hash(await readFile(join(project, 'dist', path))) })))
   await writeFile(join(evidence, 'result.json'), JSON.stringify({
     evidenceKind: 'RD_SELF_CHECK_SYNTHETIC_LOCAL', checks, browserPageErrors: errors,
-    serverBundleSha256: hash(bundle), clientArtifacts, apiResponses, modelInputs: modelInputs.map(input => ({ versionId: input.versionId, departments: input.departments.length, groups: input.groups.length, duties: input.duties.length, chapters: input.chapters.length })),
+    serverBundleSha256: hash(bundle), clientArtifacts, apiResponses, a17EndpointChecks, modelInputs: modelInputs.map(input => ({ versionId: input.versionId, departments: input.departments.length, groups: input.groups.length, duties: input.duties.length, chapters: input.chapters.length })),
   }, null, 2))
   console.log(JSON.stringify({ result: 'PASS', checks: checks.length, evidence }, null, 2))
 } catch (error) {

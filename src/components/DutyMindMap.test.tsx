@@ -125,6 +125,27 @@ describe('DutyMindMap RD UI checks', () => {
     expect([...reader.host.querySelectorAll('button')].some(b => b.textContent === '請 AI 盤點')).toBe(false)
   })
 
+  it('lets a whole-version ordinary reader filter any department and restore all without changing access or reloading', async () => {
+    const p = { ...fixture(), canReview: false }, before = structuredClone(p)
+    const review = vi.spyOn(dutyMapClient, 'review')
+    const { host } = await mount(p)
+    const get = vi.mocked(dutyMapClient.get)
+    expect(host.querySelectorAll('[data-duty-map-node^="department:"]')).toHaveLength(6)
+    for (const name of ['財務部', '研發部']) {
+      const department = p.departments.find(value => value.name === name)!
+      select(host, '篩選部門', department.id)
+      expect(host.querySelectorAll('[data-duty-map-node^="department:"]')).toHaveLength(1)
+      expect(host.querySelector(`[data-duty-map-node="department:${department.id}"]`)).not.toBeNull()
+    }
+    click(button(host, '清除篩選'))
+    expect(host.querySelectorAll('[data-duty-map-node^="department:"]')).toHaveLength(6)
+    expect(host.querySelectorAll('[data-duty-map-node^="group:"]')).toHaveLength(33)
+    expect([...host.querySelectorAll('button')].some(value => value.textContent === '請 AI 盤點')).toBe(false)
+    expect(get).toHaveBeenCalledTimes(1)
+    expect(review).not.toHaveBeenCalled()
+    expect(p).toEqual(before)
+  })
+
   it('preserves the filtered reading view at the 60-second deadline and ignores a late timed-out result', async () => {
     const p = fixture(), finance = p.departments.find(department => department.name === '財務部')!
     const group = p.map!.groups.find(value => value.departmentId === finance.id)!
